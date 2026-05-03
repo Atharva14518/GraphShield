@@ -1,13 +1,3 @@
-"""
-Tests for graphshield.algorithms.blast_radius.
-
-Covers:
-  - test_reachable_nodes_correct
-  - test_sensitive_sink_detected
-  - test_blast_score_formula
-  - test_no_sinks_low_sensitivity
-  - test_credential_sink_critical_sensitivity
-"""
 
 from __future__ import annotations
 
@@ -27,14 +17,7 @@ from graphshield.algorithms.blast_radius import (
 from graphshield.core.dag_builder import DependencyDAG, NodeMetadata
 from graphshield.core.manifest_parser import Dependency
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _make_dag(*deps_specs) -> DependencyDAG:
-    """Quick helper — specs: (name, version, parent_or_None)."""
     deps = []
     for spec in deps_specs:
         name, version, parent = spec
@@ -48,12 +31,6 @@ def _make_dag(*deps_specs) -> DependencyDAG:
     dag.build_from_dependencies(deps)
     dag.compute_topological_sort()
     return dag
-
-
-# ---------------------------------------------------------------------------
-# _determine_sensitivity
-# ---------------------------------------------------------------------------
-
 
 class TestDetermineSensitivity:
     def test_empty_gives_low(self) -> None:
@@ -75,15 +52,8 @@ class TestDetermineSensitivity:
         assert _determine_sensitivity(["network", "database"]) == "HIGH"
         assert _determine_sensitivity(["network", "credential"]) == "CRITICAL"
 
-
-# ---------------------------------------------------------------------------
-# compute_blast_radius
-# ---------------------------------------------------------------------------
-
-
 class TestComputeBlastRadius:
     def test_reachable_nodes_correct(self, sample_dag: DependencyDAG) -> None:
-        """qs has 0 downstream nodes (it's a leaf)."""
         result = compute_blast_radius(
             "qs", sample_dag, "CVE-2022-24999", 7.5
         )
@@ -91,16 +61,12 @@ class TestComputeBlastRadius:
         assert result.reachable_nodes == []
 
     def test_vulnerable_root_reaches_all(self, sample_dag: DependencyDAG) -> None:
-        """__root__ reaches all packages in the sample DAG."""
-        # Inject a CVE onto __root__ to test
         result = compute_blast_radius(
             "__root__", sample_dag, "CVE-TEST", 9.0
         )
-        # __root__ should reach express, lodash, axios, qs, follow-redirects
         assert result.reachable_count >= 5
 
     def test_sensitive_sink_detected(self) -> None:
-        """Verify that 'requests' (a known network sink) is flagged."""
         dag = _make_dag(
             ("vulnerable-pkg", "1.0.0", None),
             ("requests", "2.28.0", "vulnerable-pkg"),
@@ -113,17 +79,15 @@ class TestComputeBlastRadius:
         assert result.data_sensitivity in ("MEDIUM", "HIGH", "CRITICAL")
 
     def test_no_sinks_low_sensitivity(self) -> None:
-        """A package with no sink descendants → LOW sensitivity."""
         dag = _make_dag(
             ("a", "1.0.0", None),
-            ("b", "1.0.0", "a"),   # b is not a known sink
+            ("b", "1.0.0", "a"),
         )
         result = compute_blast_radius("a", dag, "CVE-TEST", 5.0)
         assert result.data_sensitivity == "LOW"
         assert result.sensitive_sinks_reachable == []
 
     def test_credential_sink_critical_sensitivity(self) -> None:
-        """dotenv is a credential sink — should trigger CRITICAL sensitivity."""
         dag = _make_dag(
             ("some-pkg", "1.0.0", None),
             ("python_dotenv", "0.21.0", "some-pkg"),
@@ -133,7 +97,6 @@ class TestComputeBlastRadius:
         assert "credential" in result.sink_types
 
     def test_blast_score_formula(self) -> None:
-        """Verify score = cvss × log2(1 + reachable) × sensitivity_mult."""
         dag = _make_dag(
             ("vuln", "1.0.0", None),
             ("dep1", "1.0.0", "vuln"),
@@ -147,7 +110,6 @@ class TestComputeBlastRadius:
         assert abs(result.blast_radius_score - round(expected, 4)) < 0.01
 
     def test_blast_score_increases_with_reachable(self) -> None:
-        """More reachable nodes → higher blast radius score."""
         dag_small = _make_dag(
             ("v", "1.0.0", None),
             ("d1", "1.0.0", "v"),
@@ -168,10 +130,9 @@ class TestComputeBlastRadius:
         assert result.topological_rank is not None
 
     def test_attack_paths_found(self) -> None:
-        """Verify attack paths are generated when a sink is reachable."""
         dag = _make_dag(
             ("vuln", "1.0.0", None),
-            ("sqlalchemy", "1.4.0", "vuln"),  # known DB sink
+            ("sqlalchemy", "1.4.0", "vuln"),
         )
         result = compute_blast_radius("vuln", dag, "CVE-TEST", 8.0)
         assert len(result.attack_paths) > 0
@@ -180,7 +141,6 @@ class TestComputeBlastRadius:
         assert ap.sink_node in {"sqlalchemy"}
 
     def test_attack_paths_sorted_by_score(self) -> None:
-        """attack_paths must be sorted descending by exploit_score."""
         dag = _make_dag(
             ("vuln", "1.0.0", None),
             ("requests", "2.0.0", "vuln"),
@@ -191,17 +151,10 @@ class TestComputeBlastRadius:
             for i in range(len(result.attack_paths) - 1):
                 assert result.attack_paths[i].exploit_score >= result.attack_paths[i + 1].exploit_score
 
-
-# ---------------------------------------------------------------------------
-# compute_all_blast_radii
-# ---------------------------------------------------------------------------
-
-
 class TestComputeAllBlastRadii:
     def test_only_cve_nodes_scanned(self, sample_dag: DependencyDAG) -> None:
         results = compute_all_blast_radii(sample_dag)
         result_nodes = {r.source_node for r in results}
-        # Only qs, lodash, follow-redirects have CVEs in sample_dag
         assert "express" not in result_nodes
         assert "axios" not in result_nodes
 
@@ -212,7 +165,6 @@ class TestComputeAllBlastRadii:
                 assert results[i].blast_radius_score >= results[i + 1].blast_radius_score
 
     def test_metadata_updated(self, sample_dag: DependencyDAG) -> None:
-        """blast_radius_score must be written back to dag.metadata."""
         compute_all_blast_radii(sample_dag)
         for node in ["qs", "lodash", "follow-redirects"]:
             meta = sample_dag.metadata.get(node)
@@ -220,7 +172,6 @@ class TestComputeAllBlastRadii:
                 assert meta.blast_radius_score is not None
 
     def test_clean_dag_returns_empty(self) -> None:
-        """A DAG with no CVEs should return an empty list."""
         dag = _make_dag(
             ("clean-a", "1.0.0", None),
             ("clean-b", "1.0.0", "clean-a"),

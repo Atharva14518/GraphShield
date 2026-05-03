@@ -1,12 +1,3 @@
-"""
-GraphShield CLI — Typer-based command-line interface.
-
-Commands:
-  graphshield init      — Initialise database and Bloom filter
-  graphshield scan      — Scan a project (local path or GitHub URL)
-  graphshield watch     — Continuous monitoring daemon
-  graphshield status    — Show DB and Bloom filter status
-"""
 
 from __future__ import annotations
 
@@ -40,23 +31,12 @@ app = typer.Typer(
 console = Console(stderr=False)
 err_console = Console(stderr=True, style="bold red")
 
-# ---------------------------------------------------------------------------
-# Logging setup
-# ---------------------------------------------------------------------------
-
-
 def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
         level=level,
         format="%(levelname)s %(name)s: %(message)s",
     )
-
-
-# ---------------------------------------------------------------------------
-# init
-# ---------------------------------------------------------------------------
-
 
 @app.command()
 def init(
@@ -70,7 +50,6 @@ def init(
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Initialise GraphShield — download NVD feeds and build the Bloom filter."""
     _setup_logging(verbose)
 
     console.print(Panel.fit(
@@ -78,7 +57,6 @@ def init(
         border_style="cyan",
     ))
 
-    # Parse years
     try:
         year_list = [int(y.strip()) for y in years.split(",") if y.strip()]
     except ValueError:
@@ -93,7 +71,6 @@ def init(
         console=console,
         transient=True,
     ) as progress:
-        # Step 1: NVD ingestion
         tid = progress.add_task("Ingesting NVD CVE feeds…", total=None)
         try:
             from graphshield.data.nvd_ingestion import ingest_nvd_feeds
@@ -108,7 +85,6 @@ def init(
             err_console.print(f"NVD ingestion failed: {exc}")
             raise typer.Exit(code=1)
 
-        # Step 2: Build Bloom filter
         progress.update(tid, description="Building Bloom filter…")
         try:
             _build_bloom_filter(DB_PATH, BLOOM_PATH)
@@ -122,14 +98,7 @@ def init(
     console.print(f"  DB path:    [dim]{DB_PATH}[/dim]")
     console.print(f"  Bloom path: [dim]{BLOOM_PATH}[/dim]")
 
-
 def _build_bloom_filter(db_path: Path, bloom_path: Path) -> None:
-    """Read all CVE IDs from the DB and populate + save the Bloom filter.
-
-    Args:
-        db_path: Path to the GraphShield SQLite database.
-        bloom_path: Destination path for the serialised Bloom filter.
-    """
     import sqlite3
     from graphshield.core.bloom_filter import BloomFilter
 
@@ -143,18 +112,12 @@ def _build_bloom_filter(db_path: Path, bloom_path: Path) -> None:
     bf = BloomFilter(expected_items=n, false_positive_rate=0.001)
     for pkg in packages:
         bf.add(pkg.lower().replace("-", "_"))
-        bf.add(pkg)  # also add raw form
+        bf.add(pkg)
 
     bf.save(bloom_path)
     logging.getLogger(__name__).info(
         "Bloom filter built with %d package entries → %s", len(packages), bloom_path
     )
-
-
-# ---------------------------------------------------------------------------
-# scan
-# ---------------------------------------------------------------------------
-
 
 @app.command()
 def scan(
@@ -181,22 +144,9 @@ def scan(
         help="Exit with code 1 if risk reaches this level (MEDIUM|HIGH|CRITICAL)",
     ),
 ) -> None:
-    """Scan a project for vulnerable dependencies.
-
-    TARGET can be a local directory path or a GitHub URL.
-
-    Examples:
-
-        graphshield scan ./my-project
-
-        graphshield scan https://github.com/expressjs/express
-
-        graphshield scan . --output report.json --markdown report.md
-    """
     _setup_logging(verbose)
     output_mode = output.lower().strip()
     if output_mode in {"json", "markdown"}:
-        # Keep stdout clean/pipeline-safe for machine-readable output modes.
         logging.getLogger().setLevel(logging.ERROR)
 
     if output_mode not in {"json", "markdown"}:
@@ -248,7 +198,6 @@ def scan(
 
             progress.update(tid, description="[green]Scan complete[/green]")
 
-    # ---- Output format mode (stdout, pipe-friendly) ----
     if output_mode == "json":
         typer.echo(report.to_json())
         _risk_rank = {"CLEAN": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
@@ -266,10 +215,8 @@ def scan(
             raise typer.Exit(code=1)
         raise typer.Exit(code=0)
 
-    # ---- Render summary ----
     _render_scan_summary(report)
 
-    # ---- Write outputs ----
     if output and output_mode not in {"json", "markdown"}:
         out_path = Path(output)
         out_path.write_text(report.to_json(), encoding="utf-8")
@@ -279,20 +226,13 @@ def scan(
         markdown.write_text(report.to_markdown(), encoding="utf-8")
         console.print(f"[dim]Markdown report → {markdown}[/dim]")
 
-    # ---- Exit code ----
     _risk_rank = {"CLEAN": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     threshold = _risk_rank.get(fail_on.upper(), 4)
     actual = _risk_rank.get(report.risk_summary, 0)
     if actual >= threshold:
         raise typer.Exit(code=1)
 
-
 def _render_scan_summary(report: "ScanReport") -> None:
-    """Print a rich-formatted scan summary to the console.
-
-    Args:
-        report: The completed scan report.
-    """
     from graphshield.core.scanner import ScanReport
 
     badge = {
@@ -307,7 +247,6 @@ def _render_scan_summary(report: "ScanReport") -> None:
     console.print(f"  Risk level:  {badge}")
     console.print()
 
-    # Summary table
     t = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan")
     t.add_column("Metric", style="dim", width=32)
     t.add_column("Value", justify="right")
@@ -326,7 +265,6 @@ def _render_scan_summary(report: "ScanReport") -> None:
     t.add_row("Scan duration", f"{report.scan_duration_seconds}s")
     console.print(t)
 
-    # Top vulnerabilities
     if report.blast_radius_results:
         console.print()
         console.print("[bold]Top Vulnerabilities[/bold]")
@@ -350,7 +288,6 @@ def _render_scan_summary(report: "ScanReport") -> None:
             )
         console.print(vt)
 
-    # Minimum patch set
     mps = report.minimum_patch_set
     if mps.packages_to_update:
         console.print()
@@ -360,12 +297,6 @@ def _render_scan_summary(report: "ScanReport") -> None:
         )
         for i, pkg in enumerate(mps.update_order, 1):
             console.print(f"  {i}. [cyan]{pkg}[/cyan]")
-
-
-# ---------------------------------------------------------------------------
-# watch
-# ---------------------------------------------------------------------------
-
 
 @app.command()
 def watch(
@@ -384,11 +315,6 @@ def watch(
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Start the continuous monitoring watchdog daemon.
-
-    Watches for manifest changes and new CVEs, dispatching alerts via
-    webhook and/or GitHub issues.
-    """
     _setup_logging(verbose)
     console.print(Panel.fit(
         f"[bold cyan]Watchdog[/bold cyan] monitoring [white]{path}[/white]",
@@ -408,17 +334,10 @@ def watch(
     agent.run_until_interrupted()
     console.print("[dim]Watchdog stopped.[/dim]")
 
-
-# ---------------------------------------------------------------------------
-# status
-# ---------------------------------------------------------------------------
-
-
 @app.command()
 def status(
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Show GraphShield database and Bloom filter status."""
     _setup_logging(verbose)
 
     console.print("[bold cyan]GraphShield Status[/bold cyan]")
@@ -429,7 +348,6 @@ def status(
     t.add_column("Status")
     t.add_column("Details")
 
-    # DB
     if DB_PATH.exists():
         try:
             import sqlite3
@@ -449,7 +367,6 @@ def status(
 
     t.add_row("CVE Database", db_status, db_detail)
 
-    # Bloom filter
     if BLOOM_PATH.exists():
         try:
             from graphshield.core.bloom_filter import BloomFilter
@@ -469,7 +386,6 @@ def status(
 
     t.add_row("Bloom Filter", bloom_status, bloom_detail)
 
-    # Groq API key
     if GROQ_API_KEY:
         t.add_row("Groq API Key", "[green]✓ Set[/green]", "[dim]●●●●●●●●[/dim]")
     else:
@@ -481,15 +397,10 @@ def status(
 
     console.print(t)
 
-
-# Deferred import for type hint only
-from graphshield.core.scanner import ScanReport  # noqa: E402
-
+from graphshield.core.scanner import ScanReport
 
 def main() -> None:
-    """Entry point for the ``graphshield`` command."""
     app()
-
 
 if __name__ == "__main__":
     main()

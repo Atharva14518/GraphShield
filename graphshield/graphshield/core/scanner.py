@@ -1,12 +1,3 @@
-"""
-GraphShield main scan pipeline.
-
-:class:`GraphShieldScanner` orchestrates every sub-system:
-  DAG build → CVE lookup → Tarjan SCC → Blast Radius → Steiner Tree → LLM Agent
-
-:class:`ScanReport` is the single output artifact — fully serialisable
-to JSON and Markdown for CI/CD integration.
-"""
 
 from __future__ import annotations
 
@@ -48,20 +39,7 @@ from graphshield.exceptions import ManifestParseError, ScanError
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Temp helpers
-# ---------------------------------------------------------------------------
-
-
 def _safe_clone_tmpdir() -> Path:
-    """Return a writable temp directory for repository clones.
-
-    Preference order:
-    1) ~/.graphshield/tmp
-    2) <current working dir>/.graphshield_tmp
-    3) system temp directory
-    """
     candidates = [
         GRAPHSHIELD_DIR / "tmp",
         Path.cwd() / ".graphshield_tmp",
@@ -77,9 +55,7 @@ def _safe_clone_tmpdir() -> Path:
             continue
     return Path(tempfile.mkdtemp(prefix="graphshield_"))
 
-
 def _extract_github_owner_repo(target: str) -> tuple[str, str] | None:
-    """Parse owner/repo from GitHub SSH or HTTPS target."""
     cleaned = target.strip()
     if cleaned.endswith(".git"):
         cleaned = cleaned[:-4]
@@ -94,9 +70,7 @@ def _extract_github_owner_repo(target: str) -> tuple[str, str] | None:
         return None
     return parts[0], parts[1]
 
-
 def _download_github_archive(target: str, dest_dir: Path) -> Path:
-    """Download and extract a GitHub tarball archive as clone fallback."""
     parsed = _extract_github_owner_repo(target)
     if not parsed:
         raise ScanError(f"Unsupported GitHub target for archive fallback: {target}")
@@ -126,29 +100,8 @@ def _download_github_archive(target: str, dest_dir: Path) -> Path:
         f"Failed GitHub archive fallback for {target}: {last_error}"
     )
 
-
-# ---------------------------------------------------------------------------
-# Data models
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class PatchRecommendation:
-    """LLM-generated patch recommendation for a single vulnerable package.
-
-    Attributes:
-        package_name: Name of the vulnerable package.
-        current_version: Installed version.
-        cve_ids: Associated CVE identifiers.
-        cvss_score: CVSS base score.
-        recommended_version: Specific safe version to upgrade to.
-        threat_explanation: 3-sentence plain-English explanation.
-        breaking_changes: Known breaking changes or "None detected".
-        upgrade_command: Exact shell command to perform the upgrade.
-        confidence: ``HIGH`` | ``MEDIUM`` | ``LOW``.
-        attack_path_summary: One-sentence worst-path description.
-        blast_radius_score: Composite blast radius score.
-    """
 
     package_name: str
     current_version: str
@@ -162,13 +115,8 @@ class PatchRecommendation:
     attack_path_summary: str
     blast_radius_score: float
 
-
 @dataclass
 class ScanReport:
-    """Complete scan result for a project.
-
-    All fields are fully serialisable via :meth:`to_json`.
-    """
 
     manifest_path: str
     target: str
@@ -184,22 +132,15 @@ class ScanReport:
     patch_recommendations: List[PatchRecommendation]
     scan_duration_seconds: float
     timestamp: str
-    risk_summary: str   # CLEAN | LOW | MEDIUM | HIGH | CRITICAL
-
-    # ------------------------------------------------------------------
-    # Serialisation
-    # ------------------------------------------------------------------
+    risk_summary: str
 
     def to_dict(self) -> Dict[str, Any]:
-        """Recursively serialise all dataclass fields to a plain dict."""
         return _dc_to_dict(self)
 
     def to_json(self) -> str:
-        """Serialise report to a compact JSON string."""
         return json.dumps(self.to_dict(), indent=2, default=str)
 
     def to_markdown(self) -> str:
-        """Render report as a GitHub PR comment in Markdown."""
         risk_badge = {
             "CLEAN": "🟢 CLEAN",
             "LOW": "🔵 LOW",
@@ -296,14 +237,7 @@ class ScanReport:
         ]
         return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# Serialisation helpers
-# ---------------------------------------------------------------------------
-
-
 def _dc_to_dict(obj: Any) -> Any:
-    """Recursively convert dataclass instances to plain dicts/lists/primitives."""
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return {k: _dc_to_dict(v) for k, v in dataclasses.asdict(obj).items()}
     if isinstance(obj, list):
@@ -314,22 +248,7 @@ def _dc_to_dict(obj: Any) -> Any:
         return sorted(_dc_to_dict(i) for i in obj)
     return obj
 
-
-# ---------------------------------------------------------------------------
-# Scanner
-# ---------------------------------------------------------------------------
-
-
 class GraphShieldScanner:
-    """Orchestrates the full GraphShield vulnerability scan pipeline.
-
-    Args:
-        groq_api_key: Groq API key for LLM patch recommendations.
-            If empty, the agent step is skipped.
-        db_path: Path to the GraphShield SQLite CVE database.
-        bloom_path: Path to the serialised Bloom Filter.
-        use_agent: Whether to run the LLM patch agent.
-    """
 
     def __init__(
         self,
@@ -345,11 +264,6 @@ class GraphShieldScanner:
         self._bloom: Optional[BloomFilter] = None
 
     def _load_bloom(self) -> Optional[BloomFilter]:
-        """Lazily load the Bloom Filter from disk.
-
-        Returns:
-            Loaded :class:`BloomFilter` or ``None`` if not found.
-        """
         if self._bloom is None:
             if not self.bloom_path.exists():
                 logger.warning(
@@ -365,21 +279,6 @@ class GraphShieldScanner:
         return self._bloom
 
     def _resolve_target(self, target: str) -> tuple[Path, bool]:
-        """Resolve a scan target to a local filesystem path.
-
-        If *target* is a GitHub URL (starts with ``https://github.com``),
-        the repository is shallow-cloned into a temporary directory.
-
-        Args:
-            target: GitHub URL or local filesystem path.
-
-        Returns:
-            Tuple of *(path, is_temp)* where *is_temp* indicates the
-            directory should be deleted after scanning.
-
-        Raises:
-            ScanError: If cloning fails.
-        """
         if target.startswith("https://github.com") or target.startswith("git@github.com"):
             tmp = _safe_clone_tmpdir()
             try:
@@ -411,45 +310,18 @@ class GraphShieldScanner:
         return local, False
 
     def scan(self, target: str) -> ScanReport:
-        """Run a full vulnerability scan on a project.
-
-        Pipeline:
-        1. Resolve target (clone GitHub URL if needed).
-        2. Discover all manifest files.
-        3. Parse manifests → unified dependency list.
-        4. Build :class:`DependencyDAG`.
-        5. CVE lookup: Bloom filter pre-screen → AVL tree confirmation.
-        6. Topological risk scoring.
-        7. Tarjan's SCC → circular trust clusters.
-        8. Blast radius computation.
-        9. Steiner Tree → minimum patch set.
-        10. LLM patch agent (top N by blast radius).
-        11. Build and return :class:`ScanReport`.
-
-        Args:
-            target: GitHub URL (``https://github.com/…``) or local path.
-
-        Returns:
-            Populated :class:`ScanReport`.
-
-        Raises:
-            ScanError: If no manifests found or the scan otherwise fails.
-        """
         start = time.time()
         tmp_path: Optional[Path] = None
 
         try:
-            # Step 1: Resolve target
             path, is_temp = self._resolve_target(target)
             if is_temp:
                 tmp_path = path
 
-            # Step 2: Find manifests
             manifests = find_all_manifests(path)
             if not manifests:
                 raise ScanError(f"No manifest files found in {target}")
 
-            # Step 3: Parse all manifests
             all_deps = []
             for manifest in manifests:
                 try:
@@ -460,12 +332,10 @@ class GraphShieldScanner:
             if not all_deps:
                 raise ScanError(f"No dependencies found in any manifest in {target}")
 
-            # Step 4: Build DAG
             dag = DependencyDAG()
             dag.build_from_dependencies(all_deps)
             dag.compute_topological_sort()
 
-            # Step 5: CVE lookup
             bloom = self._load_bloom()
             cve_scores: Dict[str, float] = {}
 
@@ -473,7 +343,6 @@ class GraphShieldScanner:
                 meta = dag.metadata.get(node)
                 if meta is None:
                     continue
-                # Bloom filter pre-check (skip if bloom unavailable)
                 if bloom is not None and not bloom.contains(node.replace("-", "_").lower()):
                     continue
                 if self.db_path.exists():
@@ -489,19 +358,14 @@ class GraphShieldScanner:
                     except Exception as exc:
                         logger.debug("CVE lookup failed for %s: %s", node, exc)
 
-            # Step 6: Topological risk
             dag.compute_topological_risk_scores(cve_scores)
 
-            # Step 7: Circular trust detection
             clusters = find_all_circular_trust(dag)
 
-            # Step 8: Blast radius
             blast_results = compute_all_blast_radii(dag)
 
-            # Step 9: Minimum patch set
             patch_set = compute_minimum_patch_set(dag, blast_results)
 
-            # Step 10: LLM agent
             recommendations: List[PatchRecommendation] = []
             if self.use_agent and self.groq_api_key:
                 try:
@@ -518,7 +382,6 @@ class GraphShieldScanner:
                 except Exception as exc:
                     logger.warning("Agent initialisation failed: %s", exc)
 
-            # Step 11: Build report
             risk = self._compute_risk_summary(blast_results, clusters)
             duration = round(time.time() - start, 2)
 
@@ -557,15 +420,6 @@ class GraphShieldScanner:
         blast_results: List[BlastRadiusResult],
         clusters: List[CircularTrustCluster],
     ) -> str:
-        """Derive an overall risk label from scan results.
-
-        Args:
-            blast_results: CVE blast radius results.
-            clusters: Circular trust clusters.
-
-        Returns:
-            ``"CLEAN"`` | ``"LOW"`` | ``"MEDIUM"`` | ``"HIGH"`` | ``"CRITICAL"``.
-        """
         if not blast_results and not clusters:
             return "CLEAN"
 
