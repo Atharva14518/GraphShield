@@ -1,0 +1,142 @@
+name: GraphShield Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "requirements.txt"
+      - "Pipfile"
+      - "pyproject.toml"
+      - "pom.xml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "requirements.txt"
+      - "Pipfile"
+      - "pyproject.toml"
+      - "pom.xml"
+  schedule:
+    # Daily scan at 3:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fail_on:
+        description: "Fail pipeline if risk reaches this level"
+        required: false
+        default: "HIGH"
+        type: choice
+        options: [MEDIUM, HIGH, CRITICAL]
+
+jobs:
+  graphshield-scan:
+    name: GraphShield Vulnerability Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write         # for watchdog GitHub issue creation
+      pull-requests: write  # for PR comments
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install GraphShield
+        run: pip install graphshield
+
+      - name: Initialise GraphShield (CVE database + Bloom filter)
+        env:
+          GRAPHSHIELD_DIR: ${{ runner.temp }}/.graphshield
+        run: |
+          graphshield init --years 2020,2021,2022,2023,2024
+
+      - name: Run vulnerability scan
+        id: scan
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GRAPHSHIELD_DIR: ${{ runner.temp }}/.graphshield
+        run: |
+          graphshield scan . \
+            --output graphshield-report.json \
+            --markdown graphshield-report.md \
+            --fail-on ${{ github.event.inputs.fail_on || 'HIGH' }} \
+            --no-agent
+        continue-on-error: true
+
+      - name: Upload scan report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: graphshield-report
+          path: |
+            graphshield-report.json
+            graphshield-report.md
+          retention-days: 30
+
+      - name: Post PR comment with scan summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('graphshield-report.md')) {
+              console.log('No Markdown report found, skipping comment.');
+              return;
+            }
+            const body = fs.readFileSync('graphshield-report.md', 'utf8');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('GraphShield Security Report'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail if scan failed
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "GraphShield scan detected vulnerabilities above threshold."
+          exit 1
+
+  graphshield-test:
+    name: GraphShield Self-Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: python -m pytest tests/ -v --tb=short
+
+      - name: Coverage report
+        run: python -m pytest tests/ --cov=graphshield --cov-report=term-missing --cov-fail-under=80

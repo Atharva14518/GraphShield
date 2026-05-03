@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GraphShield — Vulnerability Intelligence Dashboard</title>
+  <meta name="description" content="Interactive vulnerability intelligence dashboard for GraphShield supply chain security scans." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <!-- D3.js for force graph -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <style>
+    /* ── Reset & Tokens ────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-0: #080b12;
+      --bg-1: #0d1117;
+      --bg-2: #161b22;
+      --bg-3: #21262d;
+      --bg-glass: rgba(22, 27, 34, 0.72);
+
+      --accent: #58a6ff;
+      --accent-glow: rgba(88,166,255,0.18);
+      --green: #3fb950;
+      --green-dim: rgba(63,185,80,0.12);
+      --yellow: #d29922;
+      --yellow-dim: rgba(210,153,34,0.12);
+      --orange: #f0883e;
+      --orange-dim: rgba(240,136,62,0.12);
+      --red: #f85149;
+      --red-dim: rgba(248,81,73,0.12);
+      --purple: #bc8cff;
+      --purple-dim: rgba(188,140,255,0.12);
+
+      --text-0: #e6edf3;
+      --text-1: #c9d1d9;
+      --text-2: #8b949e;
+      --text-3: #484f58;
+
+      --border: rgba(139,148,158,0.15);
+      --border-light: rgba(139,148,158,0.08);
+
+      --radius: 10px;
+      --radius-sm: 6px;
+      --shadow-glow: 0 0 0 1px var(--border), 0 8px 32px rgba(0,0,0,0.45);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-0);
+      color: var(--text-1);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise overlay ──────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      background-size: 256px;
+      pointer-events: none;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .app { position: relative; z-index: 1; }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border-light);
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: .6rem;
+      font-weight: 800; font-size: 1.15rem;
+      letter-spacing: -.3px; color: var(--text-0);
+    }
+    .logo-icon { font-size: 1.4rem; }
+
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+
+    .risk-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .35rem .85rem; border-radius: 100px;
+      font-size: .78rem; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .risk-CLEAN   { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(63,185,80,.25); }
+    .risk-LOW     { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(88,166,255,.25); }
+    .risk-MEDIUM  { background: var(--yellow-dim);  color: var(--yellow); border: 1px solid rgba(210,153,34,.25); }
+    .risk-HIGH    { background: var(--orange-dim);  color: var(--orange); border: 1px solid rgba(240,136,62,.25); }
+    .risk-CRITICAL{ background: var(--red-dim);     color: var(--red);    border: 1px solid rgba(248,81,73,.25); }
+
+    /* ── Upload zone ─────────────────────────────────────────────── */
+    #upload-zone {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: calc(100vh - 60px);
+      gap: 1.5rem; padding: 2rem; text-align: center;
+      animation: fadeUp .4s ease both;
+    }
+    .upload-card {
+      background: var(--bg-2);
+      border: 2px dashed var(--border);
+      border-radius: 16px;
+      padding: 3.5rem 4rem;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      max-width: 480px; width: 100%;
+    }
+    .upload-card:hover { border-color: var(--accent); background: var(--bg-3); }
+    .upload-card p { color: var(--text-2); margin-top: .5rem; font-size: .9rem; }
+    .upload-card .upload-icon { font-size: 3rem; margin-bottom: .8rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .6rem 1.4rem; border-radius: var(--radius-sm);
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      transition: all .15s; border: none; font-family: inherit;
+    }
+    .btn-primary {
+      background: var(--accent); color: #000;
+    }
+    .btn-primary:hover { background: #79b8ff; transform: translateY(-1px); }
+    .btn-outline {
+      background: transparent; color: var(--text-1);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Main dashboard ──────────────────────────────────────────── */
+    #dashboard { display: none; padding: 1.5rem 2rem 4rem; animation: fadeUp .35s ease both; }
+
+    /* ── Stat grid ───────────────────────────────────────────────── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 1.2rem 1.4rem;
+      transition: border-color .2s;
+    }
+    .stat-card:hover { border-color: var(--border); }
+    .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); font-weight: 600; }
+    .stat-value { font-size: 1.9rem; font-weight: 800; color: var(--text-0); margin-top: .2rem; line-height: 1; }
+    .stat-sub { font-size: .75rem; color: var(--text-2); margin-top: .3rem; }
+
+    /* ── Section layout ──────────────────────────────────────────── */
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin-bottom: 1.2rem;
+    }
+    @media (max-width: 960px) { .section-grid { grid-template-columns: 1fr; } }
+
+    .section-grid--full { grid-template-columns: 1fr; }
+
+    .card {
+      background: var(--bg-2);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .9rem 1.2rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .card-title {
+      font-size: .82rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em; color: var(--text-2);
+      display: flex; align-items: center; gap: .45rem;
+    }
+    .card-body { padding: 1.2rem; }
+
+    /* ── Vuln table ──────────────────────────────────────────────── */
+    .vuln-table { width: 100%; border-collapse: collapse; }
+    .vuln-table th {
+      font-size: .7rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--text-3); font-weight: 600; text-align: left;
+      padding: .5rem .7rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .vuln-table td { padding: .6rem .7rem; font-size: .83rem; vertical-align: middle; }
+    .vuln-table tr:not(:last-child) td { border-bottom: 1px solid var(--border-light); }
+    .vuln-table tr:hover td { background: var(--bg-3); }
+
+    .cvss-pill {
+      display: inline-block; padding: .18em .6em; border-radius: 100px;
+      font-size: .72rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+    }
+    .cvss-critical { background: var(--red-dim); color: var(--red); }
+    .cvss-high     { background: var(--orange-dim); color: var(--orange); }
+    .cvss-medium   { background: var(--yellow-dim); color: var(--yellow); }
+    .cvss-low      { background: var(--green-dim); color: var(--green); }
+    .cvss-info     { background: var(--accent-glow); color: var(--accent); }
+
+    .pkg-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem; color: var(--text-0); font-weight: 600;
+    }
+
+    /* ── Force graph ─────────────────────────────────────────────── */
+    #graph-container {
+      height: 420px; position: relative;
+      background: radial-gradient(ellipse at center, rgba(88,166,255,.04) 0%, transparent 70%);
+    }
+    #graph-svg { width: 100%; height: 100%; }
+
+    .graph-controls {
+      position: absolute; top: .75rem; right: .75rem;
+      display: flex; gap: .4rem;
+    }
+    .graph-btn {
+      background: var(--bg-3); border: 1px solid var(--border);
+      color: var(--text-1); width: 30px; height: 30px;
+      border-radius: var(--radius-sm); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .8rem; transition: all .15s;
+    }
+    .graph-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .graph-legend {
+      position: absolute; bottom: .75rem; left: .75rem;
+      display: flex; flex-direction: column; gap: .3rem;
+    }
+    .legend-item {
+      display: flex; align-items: center; gap: .4rem;
+      font-size: .7rem; color: var(--text-2);
+    }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── Attack paths ────────────────────────────────────────────── */
+    .attack-path {
+      display: flex; align-items: center; gap: .3rem;
+      flex-wrap: wrap;
+      padding: .6rem .8rem;
+      background: var(--bg-3);
+      border-radius: var(--radius-sm);
+      margin-bottom: .5rem;
+      font-size: .78rem;
+    }
+    .attack-path:last-child { margin-bottom: 0; }
+    .path-node {
+      font-family: 'JetBrains Mono', monospace;
+      padding: .15em .5em; border-radius: 4px;
+      background: var(--bg-2); border: 1px solid var(--border);
+      color: var(--text-0);
+    }
+    .path-node.vuln { border-color: var(--red); color: var(--red); }
+    .path-node.sink { border-color: var(--purple); color: var(--purple); }
+    .path-arrow { color: var(--text-3); }
+    .path-meta { margin-left: auto; color: var(--text-2); font-size: .72rem; white-space: nowrap; }
+
+    /* ── Patch cluster ───────────────────────────────────────────── */
+    .patch-list { display: flex; flex-direction: column; gap: .5rem; }
+    .patch-item {
+      display: flex; align-items: center; gap: .8rem;
+      padding: .7rem .9rem;
+      background: var(--bg-3); border-radius: var(--radius-sm);
+      border: 1px solid var(--border-light);
+      transition: border-color .15s;
+    }
+    .patch-item:hover { border-color: var(--border); }
+    .patch-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--accent); color: #000;
+      font-size: .7rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .patch-info { flex: 1; min-width: 0; }
+    .patch-pkg { font-family: 'JetBrains Mono', monospace; font-size: .82rem; color: var(--text-0); font-weight: 600; }
+    .patch-savings { font-size: .72rem; color: var(--text-2); margin-top: .1rem; }
+
+    /* ── SCC clusters ────────────────────────────────────────────── */
+    .scc-card {
+      padding: .7rem .9rem;
+      background: var(--bg-3); border-radius: var(--radius-sm);
+      border: 1px solid var(--border-light);
+      margin-bottom: .5rem;
+    }
+    .scc-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+    .scc-nodes { display: flex; flex-wrap: wrap; gap: .3rem; }
+    .scc-node {
+      font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+      padding: .1em .45em; border-radius: 3px;
+      background: var(--bg-2); color: var(--text-2);
+    }
+
+    /* ── Radial chart canvas ─────────────────────────────────────── */
+    #risk-chart { display: block; margin: 0 auto; }
+
+    /* ── Scan meta ───────────────────────────────────────────────── */
+    .scan-meta {
+      display: flex; gap: 1.5rem; flex-wrap: wrap;
+      font-size: .75rem; color: var(--text-2);
+      padding: .8rem 0 .4rem;
+      border-top: 1px solid var(--border-light);
+      margin-top: 1.5rem;
+    }
+    .scan-meta span { display: flex; align-items: center; gap: .3rem; }
+
+    /* ── Empty / loading ─────────────────────────────────────────── */
+    .empty { color: var(--text-3); font-size: .82rem; text-align: center; padding: 2rem; }
+
+    /* ── Tooltip ─────────────────────────────────────────────────── */
+    .tooltip {
+      position: fixed;
+      background: var(--bg-3); border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .5rem .8rem; font-size: .78rem;
+      color: var(--text-0); pointer-events: none;
+      opacity: 0; transition: opacity .15s;
+      z-index: 1000; max-width: 220px;
+    }
+
+    /* ── Animations ──────────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .5; }
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-0); }
+    ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <span class="logo-icon">🛡️</span>
+      GraphShield
+    </div>
+    <div class="header-right">
+      <span id="header-risk-badge"></span>
+      <button class="btn btn-outline" onclick="resetDashboard()">↩ New Scan</button>
+    </div>
+  </header>
+
+  <!-- Upload zone -->
+  <div id="upload-zone">
+    <div class="upload-card" id="drop-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleDrop(event)">
+      <div class="upload-icon">📂</div>
+      <h2 style="font-size:1.15rem;color:var(--text-0);font-weight:700">Drop your scan report here</h2>
+      <p>or click to browse · accepts graphshield-report.json</p>
+    </div>
+    <div style="display:flex;gap:.8rem;align-items:center">
+      <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+        📄 Choose File
+      </button>
+      <button class="btn btn-outline" onclick="loadDemo()">🎭 Load Demo</button>
+    </div>
+    <input type="file" id="file-input" accept=".json" style="display:none" onchange="handleFileInput(event)" />
+    <p style="font-size:.78rem;color:var(--text-3)">
+      Generate a report with: <code style="color:var(--accent)">graphshield scan . --output report.json</code>
+    </p>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <!-- Stat grid -->
+    <div class="stat-grid" id="stat-grid"></div>
+
+    <!-- Top row: vuln table + radial chart -->
+    <div class="section-grid">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">⚠️ Vulnerabilities by Blast Radius</span>
+          <span id="vuln-count" style="font-size:.75rem;color:var(--text-2)"></span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table class="vuln-table">
+            <thead>
+              <tr>
+                <th>Package</th><th>CVSS</th><th>Blast Radius</th>
+                <th>Downstream</th><th>Sensitivity</th>
+              </tr>
+            </thead>
+            <tbody id="vuln-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Risk Distribution</span>
+        </div>
+        <div class="card-body" style="display:flex;align-items:center;justify-content:center;min-height:220px">
+          <canvas id="risk-chart" width="240" height="240"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Second row: force graph -->
+    <div class="card" style="margin-bottom:1.2rem">
+      <div class="card-header">
+        <span class="card-title">🕸️ Dependency Graph</span>
+        <span style="font-size:.73rem;color:var(--text-3)">Drag to pan · scroll to zoom · Vulnerable nodes pulse red</span>
+      </div>
+      <div id="graph-container">
+        <svg id="graph-svg"></svg>
+        <div class="graph-controls">
+          <button class="graph-btn" onclick="zoomGraph(1.3)" title="Zoom in">+</button>
+          <button class="graph-btn" onclick="zoomGraph(0.77)" title="Zoom out">−</button>
+          <button class="graph-btn" onclick="resetZoom()" title="Reset">⊙</button>
+        </div>
+        <div class="graph-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Vulnerable</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Direct dep</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--text-3)"></div> Transitive</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Root</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Third row: Attack paths + Min patch set -->
+    <div class="section-grid">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💣 Top Attack Paths</span>
+        </div>
+        <div class="card-body" id="attack-paths-body"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔧 Minimum Patch Set</span>
+          <span id="savings-badge" style="font-size:.73rem;color:var(--green)"></span>
+        </div>
+        <div class="card-body">
+          <div class="patch-list" id="patch-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fourth row: SCC clusters -->
+    <div class="card" id="scc-section" style="margin-bottom:1.2rem">
+      <div class="card-header">
+        <span class="card-title">🔄 Circular Trust Clusters</span>
+        <span id="scc-count" style="font-size:.73rem;color:var(--text-2)"></span>
+      </div>
+      <div class="card-body" id="scc-body"></div>
+    </div>
+
+    <!-- Scan meta -->
+    <div class="scan-meta" id="scan-meta"></div>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   DATA & STATE
+   ═══════════════════════════════════════════════ */
+let _report = null;
+let _zoom = null;
+let _svg = null;
+
+/* ═══════════════════════════════════════════════
+   FILE HANDLING
+   ═══════════════════════════════════════════════ */
+function handleFileInput(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => loadReport(JSON.parse(ev.target.result));
+  reader.readAsText(file);
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').style.borderColor = 'var(--accent)';
+}
+function handleDragLeave(e) {
+  document.getElementById('drop-zone').style.borderColor = '';
+}
+function handleDrop(e) {
+  e.preventDefault();
+  handleDragLeave(e);
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.json')) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => loadReport(JSON.parse(ev.target.result));
+  reader.readAsText(file);
+}
+
+function resetDashboard() {
+  document.getElementById('upload-zone').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('header-risk-badge').innerHTML = '';
+  _report = null;
+}
+
+/* ═══════════════════════════════════════════════
+   DEMO DATA
+   ═══════════════════════════════════════════════ */
+function loadDemo() {
+  const demo = {
+    target: "demo-project",
+    ecosystem: "npm",
+    total_packages: 87,
+    vulnerable_packages: 4,
+    critical_count: 1,
+    high_count: 2,
+    medium_count: 1,
+    risk_summary: "HIGH",
+    scan_duration_seconds: 1.37,
+    timestamp: new Date().toISOString(),
+    circular_trust_clusters: [
+      { nodes: ["webpack", "loader-utils", "webpack-dev-server"], size: 3, risk_level: "MEDIUM", max_cvss_in_cluster: 6.5, combined_blast_radius: 12 }
+    ],
+    blast_radius_results: [
+      { source_node: "lodash", cve_id: "CVE-2021-23337", cvss_score: 9.1, reachable_count: 52, data_sensitivity: "CRITICAL", blast_radius_score: 48.2, topological_rank: 3, sink_types: ["credential","database"], attack_paths: [
+          { path: ["lodash", "express", "sqlalchemy"], sink_type: "database", exploit_score: 9.1, exploitability: "NETWORK" }
+        ]
+      },
+      { source_node: "follow-redirects", cve_id: "CVE-2023-26159", cvss_score: 7.4, reachable_count: 18, data_sensitivity: "HIGH", blast_radius_score: 22.1, topological_rank: 7, sink_types: ["network"], attack_paths: [
+          { path: ["follow-redirects", "axios", "requests"], sink_type: "network", exploit_score: 7.4, exploitability: "NETWORK" }
+        ]
+      },
+      { source_node: "qs", cve_id: "CVE-2022-24999", cvss_score: 7.5, reachable_count: 8, data_sensitivity: "MEDIUM", blast_radius_score: 16.4, topological_rank: 12, sink_types: [], attack_paths: [] },
+      { source_node: "minimist", cve_id: "CVE-2021-44906", cvss_score: 5.6, reachable_count: 3, data_sensitivity: "LOW", blast_radius_score: 5.1, topological_rank: 21, sink_types: [], attack_paths: [] },
+    ],
+    minimum_patch_set: {
+      packages_to_update: ["lodash", "follow-redirects"],
+      packages_to_update_count: 2,
+      total_vulnerable_count: 4,
+      attack_paths_eliminated: 2,
+      savings_percent: 50.0,
+      update_order: ["lodash", "follow-redirects"],
+      estimated_effort: "LOW"
+    }
+  };
+  loadReport(demo);
+}
+
+/* ═══════════════════════════════════════════════
+   RENDER
+   ═══════════════════════════════════════════════ */
+function loadReport(data) {
+  _report = data;
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+
+  renderHeaderBadge();
+  renderStats();
+  renderVulnTable();
+  renderRiskChart();
+  renderGraph();
+  renderAttackPaths();
+  renderPatchSet();
+  renderSCC();
+  renderMeta();
+}
+
+/* ── Risk badge ── */
+function renderHeaderBadge() {
+  const r = _report.risk_summary || 'CLEAN';
+  document.getElementById('header-risk-badge').innerHTML =
+    `<span class="risk-badge risk-${r}">${{CLEAN:'✓',LOW:'⬤',MEDIUM:'⬤',HIGH:'⬤',CRITICAL:'⬤'}[r]||'●'} ${r}</span>`;
+}
+
+/* ── Stat grid ── */
+function renderStats() {
+  const r = _report;
+  const cards = [
+    { label:'Total Packages', value: r.total_packages, sub: r.ecosystem },
+    { label:'Vulnerable', value: r.vulnerable_packages, sub:'packages with CVEs', color: r.vulnerable_packages ? 'var(--red)' : 'var(--green)' },
+    { label:'Critical CVEs', value: r.critical_count, sub:'CVSS ≥ 9.0', color: r.critical_count ? 'var(--red)' : null },
+    { label:'High CVEs', value: r.high_count, sub:'CVSS 7–9', color: r.high_count ? 'var(--orange)' : null },
+    { label:'Circular Clusters', value: (r.circular_trust_clusters||[]).length, sub:'SCC size ≥ 2', color: (r.circular_trust_clusters||[]).length ? 'var(--purple)' : null },
+    { label:'Min. Updates', value: (r.minimum_patch_set||{}).packages_to_update_count || 0, sub:`of ${r.vulnerable_packages} vulnerable`, color: 'var(--accent)' },
+    { label:'Scan Duration', value: r.scan_duration_seconds + 's', sub:'total pipeline', isStr: true },
+  ];
+  document.getElementById('stat-grid').innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value" style="${c.color ? 'color:'+c.color : ''}">${c.value}</div>
+      <div class="stat-sub">${c.sub}</div>
+    </div>
+  `).join('');
+}
+
+/* ── Vuln table ── */
+function cvssClass(s) {
+  return s >= 9 ? 'critical' : s >= 7 ? 'high' : s >= 4 ? 'medium' : s > 0 ? 'low' : 'info';
+}
+function renderVulnTable() {
+  const results = (_report.blast_radius_results || []);
+  document.getElementById('vuln-count').textContent = `${results.length} packages`;
+  const tbody = document.getElementById('vuln-tbody');
+  if (!results.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty">No vulnerabilities detected</td></tr>`; return; }
+  tbody.innerHTML = results.map(r => `
+    <tr>
+      <td><span class="pkg-name">${r.source_node}</span></td>
+      <td><span class="cvss-pill cvss-${cvssClass(r.cvss_score)}">${r.cvss_score.toFixed(1)}</span></td>
+      <td style="font-size:.78rem;color:var(--text-1)">${r.blast_radius_score.toFixed(1)}</td>
+      <td style="font-size:.78rem;color:var(--text-2)">${r.reachable_count}</td>
+      <td><span class="cvss-pill cvss-${cvssClass( {CRITICAL:9.1,HIGH:7.1,MEDIUM:4.1,LOW:1}[r.data_sensitivity]||0 )}">${r.data_sensitivity}</span></td>
+    </tr>
+  `).join('');
+}
+
+/* ── Risk donut chart ── */
+function renderRiskChart() {
+  const canvas = document.getElementById('risk-chart');
+  const ctx = canvas.getContext('2d');
+  const r = _report;
+  const data = [
+    { label: 'Critical', value: r.critical_count, color: '#f85149' },
+    { label: 'High',     value: r.high_count,     color: '#f0883e' },
+    { label: 'Medium',   value: r.medium_count||0, color: '#d29922' },
+    { label: 'Clean',    value: Math.max(0, r.total_packages - r.vulnerable_packages), color: '#3fb950' },
+  ].filter(d => d.value > 0);
+
+  const total = data.reduce((s,d) => s + d.value, 0) || 1;
+  const cx = 120, cy = 120, outerR = 100, innerR = 62;
+  ctx.clearRect(0, 0, 240, 240);
+
+  let startAngle = -Math.PI / 2;
+  data.forEach(d => {
+    const sweep = (d.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, outerR, startAngle, startAngle + sweep);
+    ctx.closePath();
+    ctx.fillStyle = d.color;
+    ctx.fill();
+    startAngle += sweep;
+  });
+
+  // Inner cutout
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+  ctx.fillStyle = '#161b22';
+  ctx.fill();
+
+  // Centre text
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = 'bold 28px Inter';
+  ctx.fillText(r.vulnerable_packages, cx, cy + 4);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '11px Inter';
+  ctx.fillText('vulnerable', cx, cy + 20);
+
+  // Legend below
+  ctx.textAlign = 'left';
+  let lx = 30, ly = 210;
+  data.forEach(d => {
+    ctx.fillStyle = d.color;
+    ctx.fillRect(lx, ly - 8, 10, 10);
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px Inter';
+    ctx.fillText(`${d.label} (${d.value})`, lx + 14, ly);
+    lx += Math.max(80, d.label.length * 7 + 30);
+    if (lx > 180) { lx = 30; ly += 16; }
+  });
+}
+
+/* ── D3 Force graph ── */
+let _d3zoom = null;
+
+function renderGraph() {
+  const results = _report.blast_radius_results || [];
+  const vulnSet = new Set(results.map(r => r.source_node));
+  const mps = (_report.minimum_patch_set || {}).packages_to_update || [];
+
+  // Build nodes and edges from available data
+  const nodes = [];
+  const edges = [];
+  const seen = new Set();
+
+  const addNode = (id, type) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      nodes.push({ id, type });
+    }
+  };
+
+  // Root node
+  addNode('__root__', 'root');
+
+  results.forEach(r => {
+    addNode(r.source_node, vulnSet.has(r.source_node) ? 'vuln' : 'direct');
+    edges.push({ source: '__root__', target: r.source_node });
+    (r.attack_paths || []).forEach(ap => {
+      ap.path.forEach((p, i) => {
+        addNode(p, vulnSet.has(p) ? 'vuln' : 'transitive');
+        if (i > 0) edges.push({ source: ap.path[i-1], target: p });
+      });
+    });
+  });
+
+  if (nodes.length < 2) {
+    document.getElementById('graph-container').querySelector('svg').innerHTML =
+      '<text x="50%" y="50%" fill="#484f58" text-anchor="middle" dy=".35em" font-size="13">Not enough graph data in report</text>';
+    return;
+  }
+
+  // D3 setup
+  const container = document.getElementById('graph-container');
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = d3.select('#graph-svg').attr('viewBox', `0 0 ${W} ${H}`);
+  svg.selectAll('*').remove();
+
+  const g = svg.append('g');
+
+  // Zoom
+  _d3zoom = d3.zoom().scaleExtent([0.2, 4]).on('zoom', e => g.attr('transform', e.transform));
+  svg.call(_d3zoom);
+
+  // Defs for glow
+  const defs = svg.append('defs');
+  ['red','blue','purple'].forEach((c,i) => {
+    const f = defs.append('filter').attr('id', `glow-${c}`);
+    f.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+    f.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over');
+  });
+
+  // Arrow marker
+  defs.append('marker')
+    .attr('id','arrow').attr('viewBox','0 -5 10 10').attr('refX',20)
+    .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+    .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#484f58');
+
+  // Simulation
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges).id(d => d.id).distance(90).strength(0.8))
+    .force('charge', d3.forceManyBody().strength(-220))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collide', d3.forceCollide(28));
+
+  // Edges
+  const link = g.append('g').selectAll('line').data(edges).join('line')
+    .attr('stroke', '#2d333b')
+    .attr('stroke-width', 1.5)
+    .attr('marker-end', 'url(#arrow)');
+
+  // Nodes
+  const nodeColor = { vuln:'var(--red)', direct:'var(--accent)', root:'var(--purple)', transitive:'#484f58' };
+
+  const node = g.append('g').selectAll('g').data(nodes).join('g')
+    .attr('cursor', 'grab')
+    .call(d3.drag()
+      .on('start', (e,d) => { if (!e.active) sim.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end', (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+  node.append('circle')
+    .attr('r', d => d.type === 'root' ? 14 : d.type === 'vuln' ? 11 : 8)
+    .attr('fill', d => nodeColor[d.type] || '#484f58')
+    .attr('fill-opacity', .9)
+    .attr('stroke', d => d.type === 'vuln' ? 'var(--red)' : 'transparent')
+    .attr('stroke-width', 2);
+
+  // Pulse ring for vulnerable
+  node.filter(d => d.type === 'vuln').append('circle')
+    .attr('r', 15)
+    .attr('fill', 'none')
+    .attr('stroke', 'var(--red)')
+    .attr('stroke-width', 1)
+    .attr('stroke-opacity', .4)
+    .attr('class', 'pulse-ring');
+
+  node.append('text')
+    .attr('dy', d => (d.type === 'root' ? 24 : 20))
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '9px')
+    .attr('fill', '#8b949e')
+    .text(d => d.id.length > 12 ? d.id.slice(0,11)+'…' : d.id);
+
+  // Tooltip
+  const tip = document.getElementById('tooltip');
+  node.on('mouseover', (e, d) => {
+    const res = (_report.blast_radius_results||[]).find(r => r.source_node === d.id);
+    tip.innerHTML = `<strong>${d.id}</strong><br>Type: ${d.type}${res ? `<br>CVSS: ${res.cvss_score}<br>Blast: ${res.blast_radius_score.toFixed(1)}` : ''}`;
+    tip.style.opacity = 1;
+  }).on('mousemove', e => {
+    tip.style.left = (e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY - 28) + 'px';
+  }).on('mouseout', () => { tip.style.opacity = 0; });
+
+  sim.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // Add CSS pulse animation via stylesheet
+  if (!document.getElementById('pulse-style')) {
+    const s = document.createElement('style');
+    s.id = 'pulse-style';
+    s.textContent = '@keyframes ringPulse{0%,100%{stroke-opacity:.5;r:14}50%{stroke-opacity:.1;r:20}} .pulse-ring{animation:ringPulse 2s ease-in-out infinite;}';
+    document.head.appendChild(s);
+  }
+}
+
+function zoomGraph(factor) {
+  if (_d3zoom) d3.select('#graph-svg').transition().duration(250).call(_d3zoom.scaleBy, factor);
+}
+function resetZoom() {
+  if (_d3zoom) d3.select('#graph-svg').transition().duration(300).call(_d3zoom.transform, d3.zoomIdentity);
+}
+
+/* ── Attack paths ── */
+function renderAttackPaths() {
+  const container = document.getElementById('attack-paths-body');
+  const allPaths = [];
+  (_report.blast_radius_results || []).forEach(r => {
+    (r.attack_paths || []).forEach(ap => allPaths.push({ ...ap, source: r.source_node }));
+  });
+  allPaths.sort((a,b) => b.exploit_score - a.exploit_score);
+  if (!allPaths.length) { container.innerHTML = '<div class="empty">No attack paths detected</div>'; return; }
+  container.innerHTML = allPaths.slice(0,6).map(ap => {
+    const nodes = ap.path.map((n, i) => {
+      const cls = i === 0 ? 'vuln' : i === ap.path.length-1 ? 'sink' : '';
+      return `<span class="path-node ${cls}">${n}</span>`;
+    }).join(`<span class="path-arrow">→</span>`);
+    return `<div class="attack-path">${nodes}<span class="path-meta">${ap.sink_type||''} · score ${(ap.exploit_score||0).toFixed(1)}</span></div>`;
+  }).join('');
+}
+
+/* ── Patch set ── */
+function renderPatchSet() {
+  const mps = _report.minimum_patch_set || {};
+  const savings = mps.savings_percent || 0;
+  document.getElementById('savings-badge').textContent =
+    savings > 0 ? `↓ ${savings.toFixed(0)}% fewer updates` : '';
+
+  const list = document.getElementById('patch-list');
+  const pkgs = mps.update_order || mps.packages_to_update || [];
+  if (!pkgs.length) { list.innerHTML = '<div class="empty">No patches required — project is clean!</div>'; return; }
+  list.innerHTML = pkgs.map((pkg, i) => {
+    const res = (_report.blast_radius_results||[]).find(r => r.source_node === pkg);
+    return `
+    <div class="patch-item">
+      <div class="patch-num">${i+1}</div>
+      <div class="patch-info">
+        <div class="patch-pkg">${pkg}</div>
+        <div class="patch-savings">${res ? `CVSS ${res.cvss_score} · Blast ${res.blast_radius_score.toFixed(1)}` : 'Update required'}</div>
+      </div>
+      ${res ? `<span class="cvss-pill cvss-${cvssClass(res.cvss_score)}">${res.cvss_score.toFixed(1)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ── SCC clusters ── */
+function renderSCC() {
+  const clusters = _report.circular_trust_clusters || [];
+  const el = document.getElementById('scc-body');
+  document.getElementById('scc-count').textContent = `${clusters.length} detected`;
+  if (!clusters.length) { el.innerHTML = '<div class="empty">No circular trust chains detected ✓</div>'; return; }
+  el.innerHTML = clusters.map(c => `
+    <div class="scc-card">
+      <div class="scc-header">
+        <span class="cvss-pill cvss-${c.risk_level.toLowerCase()}">${c.risk_level}</span>
+        <span style="font-size:.78rem;color:var(--text-1)">${c.size} packages · blast radius ${c.combined_blast_radius}</span>
+        ${c.max_cvss_in_cluster > 0 ? `<span class="cvss-pill cvss-${cvssClass(c.max_cvss_in_cluster)}" style="margin-left:auto">CVSS ${c.max_cvss_in_cluster}</span>` : ''}
+      </div>
+      <div class="scc-nodes">${(c.nodes||[]).map(n => `<span class="scc-node">${n}</span>`).join('')}</div>
+    </div>
+  `).join('');
+}
+
+/* ── Meta footer ── */
+function renderMeta() {
+  const r = _report;
+  document.getElementById('scan-meta').innerHTML = `
+    <span>🎯 Target: <strong>${r.target}</strong></span>
+    <span>📦 Ecosystem: <strong>${r.ecosystem}</strong></span>
+    <span>🕒 Scanned: <strong>${new Date(r.timestamp).toLocaleString()}</strong></span>
+    <span>⚡ Duration: <strong>${r.scan_duration_seconds}s</strong></span>
+  `;
+}
+</script>
+</body>
+</html>
