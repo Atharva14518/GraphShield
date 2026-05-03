@@ -1,17 +1,3 @@
-"""
-NVD (National Vulnerability Database) feed ingestion pipeline.
-
-Downloads NVD JSON 1.1 feeds (gzip-compressed), parses CVE entries,
-extracts package names from CPE URIs, version ranges, and CVSS scores,
-then stores everything in a local SQLite database for fast offline
-lookups during scans.
-
-Supports:
-  - Full refresh (all years 2018–2024)
-  - Incremental refresh (modified feed only when DB is fresh enough)
-  - Exponential-backoff retries on network errors
-  - Rich progress bars
-"""
 
 from __future__ import annotations
 
@@ -50,28 +36,8 @@ from graphshield.exceptions import CVEFetchError
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class CVEEntry:
-    """A single CVE record extracted from an NVD feed.
-
-    Attributes:
-        cve_id: CVE identifier, e.g. ``CVE-2021-44228``.
-        package_name: Normalised product name from the CPE string.
-        ecosystem: Broad ecosystem hint derived from vendor/CPE data.
-        version_start: Lower bound of the affected version range.
-        version_end: Upper bound of the affected version range.
-        version_start_incl: Whether *version_start* is inclusive.
-        version_end_excl: Whether *version_end* is exclusive (open on right).
-        cvss_score: CVSS v3 base score, falling back to v2 when v3 is absent.
-        cvss_vector: Raw CVSS vector string.
-        description: English description of the vulnerability.
-        published_date: ISO-8601 publication date string.
-    """
 
     cve_id: str
     package_name: str
@@ -84,11 +50,6 @@ class CVEEntry:
     cvss_vector: str
     description: str
     published_date: str
-
-
-# ---------------------------------------------------------------------------
-# Database helpers
-# ---------------------------------------------------------------------------
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS cve_entries (
@@ -124,18 +85,14 @@ CREATE INDEX IF NOT EXISTS idx_pkg_eco
     ON package_index(package_name, ecosystem);
 """
 
-
 def _get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    """Open (or create) the SQLite database and ensure the schema exists."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA_SQL)
     conn.commit()
     return conn
 
-
 def _get_last_modified(conn: sqlite3.Connection) -> datetime | None:
-    """Return the stored last-modified timestamp, or None if not set."""
     row = conn.execute(
         "SELECT value FROM metadata WHERE key = 'last_modified'"
     ).fetchone()
@@ -146,9 +103,7 @@ def _get_last_modified(conn: sqlite3.Connection) -> datetime | None:
     except ValueError:
         return None
 
-
 def _set_last_modified(conn: sqlite3.Connection) -> None:
-    """Persist the current UTC timestamp as last-modified."""
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "INSERT OR REPLACE INTO metadata (key, value) VALUES ('last_modified', ?)",
@@ -156,24 +111,7 @@ def _set_last_modified(conn: sqlite3.Connection) -> None:
     )
     conn.commit()
 
-
-# ---------------------------------------------------------------------------
-# Network helpers
-# ---------------------------------------------------------------------------
-
-
 def _download_with_retry(url: str) -> bytes:
-    """Download *url* with exponential-backoff retry.
-
-    Args:
-        url: Full URL of the resource to fetch.
-
-    Returns:
-        Raw bytes of the HTTP response body.
-
-    Raises:
-        CVEFetchError: If all retry attempts are exhausted.
-    """
     last_exc: Exception | None = None
     for attempt in range(NVD_RETRY_ATTEMPTS):
         try:
@@ -198,21 +136,7 @@ def _download_with_retry(url: str) -> bytes:
         cause=last_exc,
     )
 
-
 def _stream_download_with_retry(url: str) -> Iterator[bytes]:
-    """Stream-download *url* in chunks with retry.
-
-    Yields raw byte chunks suitable for reassembly or progress tracking.
-
-    Args:
-        url: Full URL of the resource to stream.
-
-    Yields:
-        Raw byte chunks.
-
-    Raises:
-        CVEFetchError: If all retry attempts are exhausted.
-    """
     last_exc: Exception | None = None
     for attempt in range(NVD_RETRY_ATTEMPTS):
         try:
@@ -232,63 +156,26 @@ def _stream_download_with_retry(url: str) -> Iterator[bytes]:
         cause=last_exc,
     )
 
-
-# ---------------------------------------------------------------------------
-# CVE parsing helpers
-# ---------------------------------------------------------------------------
-
-
 def _extract_cvss(item: dict[str, Any]) -> tuple[float, str]:
-    """Extract the best available CVSS score and vector from a CVE item.
-
-    Prefers CVSS v3; falls back to v2.
-
-    Args:
-        item: A single NVD CVE item dict.
-
-    Returns:
-        Tuple of *(base_score, vector_string)*.
-    """
     impact = item.get("impact", {})
 
-    # Try CVSS v3
     v3 = impact.get("baseMetricV3", {}).get("cvssV3", {})
     if v3:
         return float(v3.get("baseScore", 0.0)), v3.get("vectorString", "")
 
-    # Fall back to CVSS v2
     v2 = impact.get("baseMetricV2", {}).get("cvssV2", {})
     if v2:
         return float(v2.get("baseScore", 0.0)), v2.get("vectorString", "")
 
     return 0.0, ""
 
-
 def _extract_description(item: dict[str, Any]) -> str:
-    """Return the English description for a CVE item.
-
-    Args:
-        item: A single NVD CVE item dict.
-
-    Returns:
-        English description string, or empty string if absent.
-    """
     for desc in item.get("cve", {}).get("description", {}).get("description_data", []):
         if desc.get("lang") == "en":
-            return desc.get("value", "")[:2000]  # cap at 2 KB
+            return desc.get("value", "")[:2000]
     return ""
 
-
 def _guess_ecosystem(vendor: str, product: str) -> str:
-    """Guess the package ecosystem from vendor/product strings.
-
-    Args:
-        vendor: CPE vendor field.
-        product: CPE product field.
-
-    Returns:
-        Ecosystem label: ``"npm"`` | ``"pip"`` | ``"maven"`` | ``"unknown"``.
-    """
     vendor_l = vendor.lower()
     product_l = product.lower()
 
@@ -304,20 +191,7 @@ def _guess_ecosystem(vendor: str, product: str) -> str:
         return "maven"
     return "unknown"
 
-
 def _parse_cve_items(items: list[dict[str, Any]]) -> list[CVEEntry]:
-    """Parse a list of raw NVD CVE item dicts into :class:`CVEEntry` objects.
-
-    Extracts one :class:`CVEEntry` per unique (CVE, package, version_range)
-    triple.  A single CVE may produce multiple entries when it affects
-    several packages or has multiple version ranges.
-
-    Args:
-        items: Raw ``CVE_Items`` list from an NVD feed JSON.
-
-    Returns:
-        List of parsed :class:`CVEEntry` instances.
-    """
     entries: list[CVEEntry] = []
 
     for item in items:
@@ -329,11 +203,9 @@ def _parse_cve_items(items: list[dict[str, Any]]) -> list[CVEEntry]:
         description: str = _extract_description(item)
         cvss_score, cvss_vector = _extract_cvss(item)
 
-        # Walk every configuration node looking for CPE/version nodes
         configurations = item.get("configurations", {})
         nodes: list[dict] = configurations.get("nodes", [])
 
-        # Flatten nested node children
         all_nodes: list[dict] = []
         stack = list(nodes)
         while stack:
@@ -350,7 +222,6 @@ def _parse_cve_items(items: list[dict[str, Any]]) -> list[CVEEntry]:
 
                 cpe_uri: str = cpe_match.get("cpe23Uri", "")
                 parts = cpe_uri.split(":")
-                # cpe:2.3:a:{vendor}:{product}:{version}:…
                 if len(parts) < 5 or parts[2] != "a":
                     continue
 
@@ -400,22 +271,7 @@ def _parse_cve_items(items: list[dict[str, Any]]) -> list[CVEEntry]:
 
     return entries
 
-
-# ---------------------------------------------------------------------------
-# Database write helpers
-# ---------------------------------------------------------------------------
-
-
 def _upsert_entries(conn: sqlite3.Connection, entries: list[CVEEntry]) -> int:
-    """Insert or replace CVE entries into the database.
-
-    Args:
-        conn: Open SQLite connection with the GraphShield schema.
-        entries: Parsed :class:`CVEEntry` objects to persist.
-
-    Returns:
-        Number of new rows inserted/replaced.
-    """
     count = 0
     for entry in entries:
         conn.execute(
@@ -440,7 +296,6 @@ def _upsert_entries(conn: sqlite3.Connection, entries: list[CVEEntry]) -> int:
                 entry.published_date,
             ),
         )
-        # Index by package name
         conn.execute(
             """
             INSERT OR IGNORE INTO package_index (package_name, ecosystem, cve_id)
@@ -452,24 +307,7 @@ def _upsert_entries(conn: sqlite3.Connection, entries: list[CVEEntry]) -> int:
     conn.commit()
     return count
 
-
-# ---------------------------------------------------------------------------
-# Feed download + parse
-# ---------------------------------------------------------------------------
-
-
 def _fetch_and_parse_feed(url: str, label: str, progress: Progress) -> list[CVEEntry]:
-    """Download, decompress, and parse a single NVD JSON.gz feed.
-
-    Args:
-        url: URL of the gzip-compressed NVD JSON feed.
-        label: Short label shown in the Rich progress bar.
-        progress: Active Rich :class:`~rich.progress.Progress` instance.
-
-    Returns:
-        List of parsed :class:`CVEEntry` objects.
-    """
-    # --- Download phase ---
     dl_task = progress.add_task(f"[cyan]Downloading {label}…", total=None)
     raw_bytes = b""
     try:
@@ -485,7 +323,6 @@ def _fetch_and_parse_feed(url: str, label: str, progress: Progress) -> list[CVEE
         progress.update(dl_task, description=f"[red]✗ {label} (failed)")
         raise
 
-    # --- Parse phase ---
     parse_task = progress.add_task(f"[yellow]Parsing {label}…", total=None)
     try:
         decompressed = gzip.decompress(raw_bytes)
@@ -503,34 +340,11 @@ def _fetch_and_parse_feed(url: str, label: str, progress: Progress) -> list[CVEE
         progress.update(parse_task, description=f"[red]✗ Parse error: {exc}")
         raise CVEFetchError(f"Failed to parse {label}", cause=exc) from exc
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
 def ingest_nvd_feeds(
     full_refresh: bool = False,
     db_path: Path = DB_PATH,
     years: list[int] | None = None,
 ) -> int:
-    """Download and ingest NVD CVE feeds into the local SQLite database.
-
-    Decision logic:
-
-    * **No DB** → perform full download of all configured years.
-    * **DB exists, age < NVD_REFRESH_HOURS** → skip entirely (return 0).
-    * **DB exists, age >= NVD_REFRESH_HOURS** → download modified feed only.
-    * *full_refresh=True* → always download all years (ignores age check).
-
-    Args:
-        full_refresh: Force re-ingestion of all yearly feeds.
-        db_path: Path to the SQLite database file.
-        years: Override which years to download (default: ``NVD_YEARS``).
-
-    Returns:
-        Total number of CVE entries inserted or replaced.
-    """
     if years is None:
         years = NVD_YEARS
 
@@ -556,7 +370,6 @@ def ingest_nvd_feeds(
     ) as progress:
 
         if full_refresh or not db_exists:
-            # Full download
             for year in years:
                 url = f"{NVD_BASE_URL}nvdcve-1.1-{year}.json.gz"
                 label = f"nvdcve-1.1-{year}.json.gz"
@@ -573,7 +386,6 @@ def ingest_nvd_feeds(
                 completed=1,
             )
         else:
-            # Incremental — modified feed only
             try:
                 entries = _fetch_and_parse_feed(
                     NVD_MODIFIED_URL, "nvdcve-1.1-modified.json.gz", progress
@@ -588,27 +400,11 @@ def ingest_nvd_feeds(
     conn.close()
     return total_ingested
 
-
 def get_cves_for_package(
     package_name: str,
     ecosystem: str = "unknown",
     db_path: Path = DB_PATH,
 ) -> list[CVEEntry]:
-    """Retrieve all CVE entries for a given package name.
-
-    The lookup is case-insensitive and normalises hyphens to underscores
-    (matching the normalisation applied during ingestion).
-
-    Args:
-        package_name: Name of the package to look up.
-        ecosystem: Optional ecosystem filter (``"npm"``, ``"pip"``, …).
-            When ``"unknown"`` all ecosystems are searched.
-        db_path: Path to the SQLite database file.
-
-    Returns:
-        List of matching :class:`CVEEntry` objects sorted by
-        *cvss_score* descending (highest severity first).
-    """
     if not db_path.exists():
         return []
 

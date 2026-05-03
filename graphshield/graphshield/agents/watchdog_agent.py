@@ -17,7 +17,7 @@ try:
     from graphshield.core.scanner import SupplyChainDiff
 except Exception:
     @dataclass
-    class SupplyChainDiff:  # type: ignore[no-redef]
+    class SupplyChainDiff:
         added: list[Dependency]
         removed: list[Dependency]
         version_changed: list[dict[str, str]]
@@ -25,7 +25,6 @@ except Exception:
         risk_summary: str
         suspicious_packages: list[str]
         recommendation: str
-
 
 class WatchdogAgent:
     def __init__(self, api_key: str, poll_interval_hours: int = 6):
@@ -47,20 +46,6 @@ class WatchdogAgent:
         old_deps: list[Dependency],
         new_deps: list[Dependency],
     ) -> SupplyChainDiff:
-        """
-        Compare old and new dependency lists. Compute:
-          - added: deps in new not in old (by name+version)
-          - removed: deps in old not in new
-          - version_changed: deps where name same but version differs
-
-        Then call Groq API with a prompt listing the changes. Ask the model:
-          "Given these dependency changes, is this safe to merge?
-           Respond ONLY in JSON: { safe_to_merge: bool, risk_summary: str,
-           suspicious_packages: list[str], recommendation: str }"
-
-        Parse response. If parsing fails: safe_to_merge=True, risk_summary="Analysis unavailable".
-        Return a fully populated SupplyChainDiff dataclass.
-        """
         old_pairs = {(d.name, d.version): d for d in old_deps}
         new_pairs = {(d.name, d.version): d for d in new_deps}
         old_by_name = {d.name: d for d in old_deps}
@@ -126,15 +111,6 @@ class WatchdogAgent:
         )
 
     def watch(self, manifest_path: str):
-        """
-        Polling loop. Every poll_interval_hours hours:
-          1. Re-parse the manifest at manifest_path
-          2. Compare against last known state
-          3. If changes: call compute_supply_chain_diff()
-          4. Print result to console using Rich
-          5. Update last known state
-        Use time.sleep(poll_interval_hours * 3600). Loop forever until KeyboardInterrupt.
-        """
         path = Path(manifest_path)
         last_state: list[Dependency] = []
         try:

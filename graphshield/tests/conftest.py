@@ -1,6 +1,3 @@
-"""
-Shared pytest fixtures for GraphShield tests.
-"""
 
 from __future__ import annotations
 
@@ -13,15 +10,8 @@ import pytest
 from graphshield.core.dag_builder import DependencyDAG, NodeMetadata
 from graphshield.core.manifest_parser import Dependency
 
-
-# ---------------------------------------------------------------------------
-# Manifest file fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture()
 def sample_package_json(tmp_path: Path) -> Path:
-    """Return path to a minimal package.json."""
     content = {
         "name": "test-app",
         "version": "1.0.0",
@@ -38,10 +28,8 @@ def sample_package_json(tmp_path: Path) -> Path:
     p.write_text(json.dumps(content))
     return p
 
-
 @pytest.fixture()
 def sample_requirements_txt(tmp_path: Path) -> Path:
-    """Return path to a minimal requirements.txt."""
     content = (
         "# Production deps\n"
         "requests==2.28.0\n"
@@ -56,10 +44,8 @@ def sample_requirements_txt(tmp_path: Path) -> Path:
     p.write_text(content)
     return p
 
-
 @pytest.fixture()
 def sample_pipfile(tmp_path: Path) -> Path:
-    """Return path to a minimal Pipfile."""
     content = """
 [requires]
 python_version = "3.11"
@@ -76,10 +62,8 @@ black = "*"
     p.write_text(content)
     return p
 
-
 @pytest.fixture()
 def sample_pyproject_poetry(tmp_path: Path) -> Path:
-    """Return path to a poetry-format pyproject.toml."""
     content = """
 [tool.poetry]
 name = "myapp"
@@ -98,10 +82,8 @@ pytest = ">=7.0"
     p.write_text(content)
     return p
 
-
 @pytest.fixture()
 def sample_pyproject_pep621(tmp_path: Path) -> Path:
-    """Return path to a PEP 621-format pyproject.toml."""
     content = """
 [project]
 name = "myapp"
@@ -122,10 +104,8 @@ dev = [
     p.write_text(content)
     return p
 
-
 @pytest.fixture()
 def sample_pom_xml(tmp_path: Path) -> Path:
-    """Return path to a minimal Maven pom.xml."""
     content = """<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <groupId>com.example</groupId>
@@ -150,27 +130,8 @@ def sample_pom_xml(tmp_path: Path) -> Path:
     p.write_text(content)
     return p
 
-
-# ---------------------------------------------------------------------------
-# DAG fixture
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture()
 def sample_dag() -> DependencyDAG:
-    """Build a DAG with a known, deterministic structure.
-
-    Graph topology::
-
-        __root__
-        ├── express ─── qs (vulnerable)
-        │
-        ├── lodash  (vulnerable)
-        │
-        └── axios ──── follow-redirects (vulnerable)
-
-    CVE data is injected directly into metadata (no DB needed).
-    """
     deps: List[Dependency] = [
         Dependency("express", "4.18.2", "npm", is_dev=False, is_direct=True),
         Dependency("lodash", "4.17.20", "npm", is_dev=False, is_direct=True),
@@ -192,7 +153,6 @@ def sample_dag() -> DependencyDAG:
     dag.build_from_dependencies(deps)
     dag.compute_topological_sort()
 
-    # Inject CVE data directly
     cve_map = {
         "qs": ("CVE-2022-24999", 7.5),
         "lodash": ("CVE-2021-23337", 7.2),

@@ -1,9 +1,3 @@
-"""
-Tests for graphshield.core.manifest_parser.
-
-Covers all 6 manifest formats plus edge cases (git deps, missing versions,
-unknown version markers).
-"""
 
 from __future__ import annotations
 
@@ -19,12 +13,6 @@ from graphshield.core.manifest_parser import (
     _extract_pip_version,
 )
 from graphshield.exceptions import ManifestParseError
-
-
-# ---------------------------------------------------------------------------
-# package.json
-# ---------------------------------------------------------------------------
-
 
 class TestParsePackageJson:
     def test_parse_package_json(self, sample_package_json: Path) -> None:
@@ -90,12 +78,6 @@ class TestParsePackageJson:
         deps = parse_manifest(p)
         assert deps[0].version == "18.2.0"
 
-
-# ---------------------------------------------------------------------------
-# requirements.txt
-# ---------------------------------------------------------------------------
-
-
 class TestParseRequirementsTxt:
     def test_parse_requirements_txt(self, sample_requirements_txt: Path) -> None:
         deps = parse_manifest(sample_requirements_txt)
@@ -113,7 +95,6 @@ class TestParseRequirementsTxt:
     def test_gte_version_extracted(self, sample_requirements_txt: Path) -> None:
         deps = parse_manifest(sample_requirements_txt)
         flask = next(d for d in deps if d.name == "flask")
-        # Should extract "2.0.0" from ">=2.0.0"
         assert flask.version == "2.0.0"
 
     def test_unknown_version_handled(self, sample_requirements_txt: Path) -> None:
@@ -125,7 +106,6 @@ class TestParseRequirementsTxt:
         deps = parse_manifest(sample_requirements_txt)
         jwt = next((d for d in deps if "jwt" in d.name), None)
         assert jwt is not None
-        # Extras [crypto] should not appear in the name
         assert "[" not in jwt.name
 
     def test_all_pip_ecosystem(self, sample_requirements_txt: Path) -> None:
@@ -145,12 +125,6 @@ class TestParseRequirementsTxt:
         deps = parse_manifest(p)
         assert deps == []
 
-
-# ---------------------------------------------------------------------------
-# Pipfile
-# ---------------------------------------------------------------------------
-
-
 class TestParsePipfile:
     def test_parse_pipfile(self, sample_pipfile: Path) -> None:
         deps = parse_manifest(sample_pipfile)
@@ -168,12 +142,6 @@ class TestParsePipfile:
         requests = next(d for d in deps if d.name == "requests")
         assert requests.is_dev is False
 
-
-# ---------------------------------------------------------------------------
-# pyproject.toml — Poetry
-# ---------------------------------------------------------------------------
-
-
 class TestParsePyprojectPoetry:
     def test_parse_pyproject_toml_poetry(self, sample_pyproject_poetry: Path) -> None:
         deps = parse_manifest(sample_pyproject_poetry)
@@ -185,19 +153,13 @@ class TestParsePyprojectPoetry:
     def test_dev_dep_marked_poetry(self, sample_pyproject_poetry: Path) -> None:
         deps = parse_manifest(sample_pyproject_poetry)
         pt = next((d for d in deps if d.name == "pytest"), None)
-        if pt:  # Some poetry versions don't expose [dev-dependencies] in extras
+        if pt:
             assert pt.is_dev is True
 
     def test_version_extracted_poetry(self, sample_pyproject_poetry: Path) -> None:
         deps = parse_manifest(sample_pyproject_poetry)
         httpx = next(d for d in deps if d.name == "httpx")
         assert httpx.version == "0.24.0"
-
-
-# ---------------------------------------------------------------------------
-# pyproject.toml — PEP 621
-# ---------------------------------------------------------------------------
-
 
 class TestParsePyprojectPEP621:
     def test_parse_pyproject_toml_pep621(self, sample_pyproject_pep621: Path) -> None:
@@ -211,12 +173,6 @@ class TestParsePyprojectPEP621:
         deps = parse_manifest(sample_pyproject_pep621)
         pydantic = next(d for d in deps if d.name == "pydantic")
         assert pydantic.version == "2.0.3"
-
-
-# ---------------------------------------------------------------------------
-# pom.xml
-# ---------------------------------------------------------------------------
-
 
 class TestParsePomXml:
     def test_parse_pom_xml(self, sample_pom_xml: Path) -> None:
@@ -238,12 +194,6 @@ class TestParsePomXml:
         spring = next(d for d in deps if "spring-core" in d.name)
         assert spring.version == "5.3.20"
 
-
-# ---------------------------------------------------------------------------
-# Error handling
-# ---------------------------------------------------------------------------
-
-
 class TestManifestParseErrors:
     def test_missing_file_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ManifestParseError):
@@ -260,12 +210,6 @@ class TestManifestParseErrors:
         p.write_text("[package]\nname = 'mypkg'\n")
         with pytest.raises(ManifestParseError):
             parse_manifest(p)
-
-
-# ---------------------------------------------------------------------------
-# Utility function tests
-# ---------------------------------------------------------------------------
-
 
 class TestUtilityFunctions:
     def test_normalise_pip_lowercase(self) -> None:

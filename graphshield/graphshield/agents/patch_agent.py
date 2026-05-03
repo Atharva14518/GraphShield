@@ -43,7 +43,6 @@ Top attack path: {attack_path}
 Please produce the JSON patch recommendation now.
 """
 
-
 class PatchAgent:
     def __init__(self, groq_api_key: str, model: str = GROQ_MODEL, temperature: float = 0.1):
         if not groq_api_key:

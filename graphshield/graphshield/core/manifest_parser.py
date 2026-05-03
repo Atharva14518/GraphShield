@@ -1,18 +1,3 @@
-"""
-Package manifest parser — unified dependency extraction.
-
-Supports:
-  - package.json          (npm direct deps + devDeps)
-  - package-lock.json     (npm all deps, lockfileVersion 2 & 3)
-  - requirements.txt      (pip, handles extras, comments, -r includes)
-  - Pipfile               (pip with dev-packages separation)
-  - pyproject.toml        (poetry and PEP 621 formats)
-  - pom.xml               (Maven, basic <dependencies> parsing)
-
-All parsers normalise package names for their ecosystem and return
-a flat list of :class:`Dependency` dataclasses. Version strings are
-stored as-is (resolution happens later in the DAG builder).
-"""
 
 from __future__ import annotations
 
@@ -28,9 +13,8 @@ from graphshield.exceptions import ManifestParseError
 
 logger = logging.getLogger(__name__)
 
-# Manifest filenames the parser recognises, in priority order.
 _MANIFEST_FILENAMES = (
-    "package-lock.json",  # More info than package.json → check first
+    "package-lock.json",
     "package.json",
     "requirements.txt",
     "Pipfile",
@@ -38,24 +22,8 @@ _MANIFEST_FILENAMES = (
     "pom.xml",
 )
 
-
-# ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class Dependency:
-    """A normalised package dependency extracted from any manifest format.
-
-    Attributes:
-        name: Canonical package name (lowercase, hyphens-as-underscores where applicable).
-        version: Resolved or declared version string (``"unknown"`` when absent).
-        ecosystem: Package ecosystem: ``"npm"`` | ``"pip"`` | ``"maven"``.
-        is_dev: ``True`` if declared in a dev/test dependency section.
-        is_direct: ``True`` if present directly in the manifest (vs. transitive).
-        parent: Name of the direct package that requires this dependency (or ``None``).
-    """
 
     name: str
     version: str
@@ -64,24 +32,7 @@ class Dependency:
     is_direct: bool
     parent: Optional[str] = None
 
-
-# ---------------------------------------------------------------------------
-# Dispatcher
-# ---------------------------------------------------------------------------
-
-
 def parse_manifest(path: Path) -> List[Dependency]:
-    """Auto-detect manifest type and parse it into a unified dep list.
-
-    Args:
-        path: Path to the manifest file.
-
-    Returns:
-        List of :class:`Dependency` objects.
-
-    Raises:
-        ManifestParseError: If the file type is unrecognised or parsing fails.
-    """
     if not path.exists():
         raise ManifestParseError(f"File not found: {path}")
 
@@ -109,26 +60,7 @@ def parse_manifest(path: Path) -> List[Dependency]:
         f"Supported: {', '.join(_MANIFEST_FILENAMES)}"
     )
 
-
-# ---------------------------------------------------------------------------
-# npm — package.json
-# ---------------------------------------------------------------------------
-
-
 def _parse_package_json(path: Path) -> List[Dependency]:
-    """Parse a ``package.json`` file for direct npm dependencies.
-
-    Reads ``dependencies`` (production) and ``devDependencies``.
-    Skips local-path entries (starting with ``file:``, ``.``, or ``/``).
-    Git-URL entries (``github:``, ``git+``, ``git://``) are included with
-    version ``"git"``.
-
-    Args:
-        path: Path to ``package.json``.
-
-    Returns:
-        List of direct :class:`Dependency` objects.
-    """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -140,10 +72,8 @@ def _parse_package_json(path: Path) -> List[Dependency]:
         for pkg_name, version_spec in block.items():
             if not isinstance(version_spec, str):
                 continue
-            # Skip local paths
             if version_spec.startswith(("file:", ".", "/")):
                 continue
-            # Git URL → sentinel version
             if any(
                 version_spec.startswith(p)
                 for p in ("git+", "git://", "github:", "bitbucket:", "gitlab:")
@@ -171,25 +101,7 @@ def _parse_package_json(path: Path) -> List[Dependency]:
 
     return deps
 
-
-# ---------------------------------------------------------------------------
-# npm — package-lock.json (lockfileVersion 2 and 3)
-# ---------------------------------------------------------------------------
-
-
 def _parse_package_lock(path: Path) -> List[Dependency]:
-    """Parse a ``package-lock.json`` to get all resolved npm dependencies.
-
-    Supports lockfileVersion 2 (``packages`` dict with optional ``node_modules``
-    prefix) and lockfileVersion 3.  Also falls back to lockfileVersion 1
-    (``dependencies`` dict).
-
-    Args:
-        path: Path to ``package-lock.json``.
-
-    Returns:
-        List of :class:`Dependency` objects with resolved versions.
-    """
     try:
         lock = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -198,7 +110,6 @@ def _parse_package_lock(path: Path) -> List[Dependency]:
     deps: List[Dependency] = []
     lockfile_version = lock.get("lockfileVersion", 1)
 
-    # Determine set of direct dependencies from root metadata
     root_pkg = lock.get("packages", {}).get("", {})
     direct_prod = set(root_pkg.get("dependencies", {}).keys())
     direct_dev = set(root_pkg.get("devDependencies", {}).keys())
@@ -206,11 +117,9 @@ def _parse_package_lock(path: Path) -> List[Dependency]:
 
     if lockfile_version >= 2 and "packages" in lock:
         packages: dict = lock["packages"]
-        # First pass: materialize package nodes with resolved versions.
         for raw_key, meta in packages.items():
             if raw_key == "":
-                continue  # root package
-            # Strip the node_modules/ prefix if present
+                continue
             pkg_name = re.sub(r"^node_modules/", "", raw_key)
             pkg_name = re.sub(r".*/node_modules/", "", pkg_name)
 
@@ -229,7 +138,6 @@ def _parse_package_lock(path: Path) -> List[Dependency]:
                 )
             )
 
-        # Second pass: materialize parent->child relationships from each package block.
         for raw_key, meta in packages.items():
             if raw_key == "":
                 parent_name = "__root__"
@@ -256,7 +164,6 @@ def _parse_package_lock(path: Path) -> List[Dependency]:
                     )
                 )
     else:
-        # lockfileVersion 1 — flat "dependencies" dict
         def _walk_v1(dep_dict: dict, parent: Optional[str] = None) -> None:
             for pkg_name, meta in dep_dict.items():
                 version = meta.get("version", "unknown")
@@ -279,36 +186,12 @@ def _parse_package_lock(path: Path) -> List[Dependency]:
 
     return deps
 
-
-# ---------------------------------------------------------------------------
-# pip — requirements.txt
-# ---------------------------------------------------------------------------
-
-# Pattern: package_name[extra,extra], optionally followed by version specifiers
 _REQ_PATTERN = re.compile(
     r"^([A-Za-z0-9_.\-]+)(?:\[[^\]]+\])?(?:\s*[><=!~^]+\s*([^\s#;,]+))?",
     re.ASCII,
 )
 
-
 def _parse_requirements_txt(path: Path) -> List[Dependency]:
-    """Parse a ``requirements.txt`` file for pip dependencies.
-
-    Handles:
-    * ``package==1.2.3``
-    * ``package>=1.2,<2.0`` — stores first specifier version
-    * ``package[extra]==1.2.3``
-    * ``package`` (no version)
-    * ``# comment`` lines → skipped
-    * ``-r other_file.txt`` → skipped
-    * ``-e ...`` editable installs → skipped
-
-    Args:
-        path: Path to ``requirements.txt``.
-
-    Returns:
-        Flat list of :class:`Dependency` objects.
-    """
     deps: List[Dependency] = []
 
     try:
@@ -318,10 +201,8 @@ def _parse_requirements_txt(path: Path) -> List[Dependency]:
 
     for raw_line in lines:
         line = raw_line.strip()
-        # Skip blank, comments, flags (-r, -e, --index-url, etc.)
         if not line or line.startswith("#") or line.startswith("-"):
             continue
-        # Split inline comments
         line = line.split("#")[0].strip()
         if not line:
             continue
@@ -332,7 +213,6 @@ def _parse_requirements_txt(path: Path) -> List[Dependency]:
             continue
 
         pkg_name = _normalise_pip(m.group(1))
-        # Extract exact version from ==specifier, else use the best specifier
         raw_spec = line[len(m.group(1)):]
         version = _extract_pip_version(raw_spec)
 
@@ -349,70 +229,30 @@ def _parse_requirements_txt(path: Path) -> List[Dependency]:
 
     return deps
 
-
 def _normalise_pip(name: str) -> str:
-    """Normalise a pip package name to lowercase with underscores.
-
-    Args:
-        name: Raw package name.
-
-    Returns:
-        Normalised name.
-    """
     return re.sub(r"[-. ]", "_", name).lower()
 
-
 def _extract_pip_version(spec: str) -> str:
-    """Extract a single representative version from a pip version specifier.
-
-    Prefers ``==`` exact pins, then ``>=``, then any numeric part found.
-
-    Args:
-        spec: Version specifier string (e.g. ``">=1.2,<2.0"``).
-
-    Returns:
-        Version string or ``"unknown"``.
-    """
     spec = spec.strip()
     if not spec:
         return "unknown"
-    # Prefer exact pin
     exact = re.search(r"==\s*([^\s,;]+)", spec)
     if exact:
         return exact.group(1)
-    # Take first >= bound
     gte = re.search(r">=\s*([^\s,;]+)", spec)
     if gte:
         return gte.group(1)
-    # Any version-like number
     any_ver = re.search(r"([0-9][0-9A-Za-z.]*)", spec)
     if any_ver:
         return any_ver.group(1)
     return "unknown"
 
-
-# ---------------------------------------------------------------------------
-# pip — Pipfile
-# ---------------------------------------------------------------------------
-
-
 def _parse_pipfile(path: Path) -> List[Dependency]:
-    """Parse a ``Pipfile`` (TOML format) for pip dependencies.
-
-    Reads ``[packages]`` (production) and ``[dev-packages]`` (dev).
-    Uses ``tomllib`` (Python 3.11 stdlib) or falls back to ``tomli``.
-
-    Args:
-        path: Path to ``Pipfile``.
-
-    Returns:
-        List of :class:`Dependency` objects.
-    """
     try:
-        import tomllib  # Python 3.11+
+        import tomllib
     except ImportError:
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError as exc:
             raise ManifestParseError(
                 "tomllib unavailable (need Python 3.11+) and tomli not installed", cause=exc
@@ -452,30 +292,12 @@ def _parse_pipfile(path: Path) -> List[Dependency]:
 
     return deps
 
-
-# ---------------------------------------------------------------------------
-# pip — pyproject.toml (poetry and PEP 621)
-# ---------------------------------------------------------------------------
-
-
 def _parse_pyproject_toml(path: Path) -> List[Dependency]:
-    """Parse a ``pyproject.toml`` file for pip dependencies.
-
-    Supports:
-    * **Poetry** format: ``[tool.poetry.dependencies]``
-    * **PEP 621** format: ``[project.dependencies]`` (list of PEP 508 strings)
-
-    Args:
-        path: Path to ``pyproject.toml``.
-
-    Returns:
-        List of :class:`Dependency` objects.
-    """
     try:
         import tomllib
     except ImportError:
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError as exc:
             raise ManifestParseError("tomllib/tomli not available", cause=exc) from exc
 
@@ -487,7 +309,6 @@ def _parse_pyproject_toml(path: Path) -> List[Dependency]:
 
     deps: List[Dependency] = []
 
-    # ---- Poetry format ----
     tool_poetry = data.get("tool", {}).get("poetry", {})
     if tool_poetry:
         for is_dev, section_key in [(False, "dependencies"), (True, "dev-dependencies")]:
@@ -510,7 +331,6 @@ def _parse_pyproject_toml(path: Path) -> List[Dependency]:
                         parent="__root__",
                     )
                 )
-        # Optional dependencies (poetry extras)
         for _group_name, group_list in tool_poetry.get("extras", {}).items():
             for pkg_name in group_list:
                 deps.append(
@@ -524,7 +344,6 @@ def _parse_pyproject_toml(path: Path) -> List[Dependency]:
                     )
                 )
 
-    # ---- PEP 621 format ----
     project_deps = data.get("project", {}).get("dependencies", [])
     if isinstance(project_deps, list):
         for dep_str in project_deps:
@@ -543,7 +362,6 @@ def _parse_pyproject_toml(path: Path) -> List[Dependency]:
                     )
                 )
 
-    # Optional dependency groups (PEP 621 style)
     optional_deps = data.get("project", {}).get("optional-dependencies", {})
     for _group, dep_list in optional_deps.items():
         for dep_str in dep_list:
@@ -562,30 +380,11 @@ def _parse_pyproject_toml(path: Path) -> List[Dependency]:
 
     return deps
 
-
-# ---------------------------------------------------------------------------
-# Maven — pom.xml
-# ---------------------------------------------------------------------------
-
-# Maven XML namespace
 _MVN_NS = {
     "mvn": "http://maven.apache.org/POM/4.0.0",
 }
 
-
 def _parse_pom_xml(path: Path) -> List[Dependency]:
-    """Parse a Maven ``pom.xml`` for project dependencies.
-
-    Extracts ``<dependency>`` elements from ``<dependencies>`` sections.
-    Dependency name is ``"{groupId}:{artifactId}"``.
-    Skips entries where ``<scope>`` is ``"test"`` (marks them as dev).
-
-    Args:
-        path: Path to ``pom.xml``.
-
-    Returns:
-        List of :class:`Dependency` objects with ecosystem ``"maven"``.
-    """
     try:
         tree = ET.parse(str(path))
     except ET.ParseError as exc:
@@ -594,22 +393,18 @@ def _parse_pom_xml(path: Path) -> List[Dependency]:
     root = tree.getroot()
     deps: List[Dependency] = []
 
-    # Handle both namespaced and non-namespaced POMs
     def _find_all(element: ET.Element, tag: str) -> list:
-        # Try with namespace first
         result = element.findall(f"mvn:{tag}", _MVN_NS)
         if not result:
             result = element.findall(tag)
         return result
 
     def _find_text(element: ET.Element, tag: str) -> str:
-        # Try with namespace first
         node = element.find(f"mvn:{tag}", _MVN_NS)
         if node is None:
             node = element.find(tag)
         return (node.text or "").strip() if node is not None else ""
 
-    # Walk all <dependencies> sections (could be inside <dependencyManagement>)
     for deps_block in root.iter():
         local_tag = deps_block.tag.split("}")[-1] if "}" in deps_block.tag else deps_block.tag
         if local_tag != "dependencies":
