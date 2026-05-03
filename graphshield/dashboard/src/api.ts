@@ -15,7 +15,7 @@ export interface StatusResponse {
   groq_configured: boolean
 }
 
-const BASE = ''  // Vite proxy forwards /api → http://127.0.0.1:8000
+const BASE = import.meta.env.VITE_API_URL ?? ''  // Set VITE_API_URL in Render for production
 const SCAN_TIMEOUT_MS = 30_000
 
 export async function fetchStatus(): Promise<StatusResponse> {
