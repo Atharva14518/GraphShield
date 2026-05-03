@@ -1,0 +1,466 @@
+{
+  "manifest_path": "/Users/toofarbutjustin/Desktop/ds_cp_final/graphshield/.graphshield_tmp/graphshield_qvqcud44/SEQUREIQ-main/backend/requirements.txt",
+  "target": "https://github.com/Atharva14518/SEQUREIQ",
+  "ecosystem": "npm",
+  "total_packages": 305,
+  "vulnerable_packages": 16,
+  "critical_count": 7,
+  "high_count": 7,
+  "medium_count": 1,
+  "circular_trust_clusters": [],
+  "blast_radius_results": [
+    {
+      "source_node": "fastapi",
+      "cve_id": "CVE-2021-32677",
+      "cvss_score": 8.2,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 274
+    },
+    {
+      "source_node": "uvicorn",
+      "cve_id": "CVE-2020-7694",
+      "cvss_score": 3.7,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 275
+    },
+    {
+      "source_node": "dnspython",
+      "cve_id": "CVE-2023-29483",
+      "cvss_score": 7.0,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 278
+    },
+    {
+      "source_node": "pyopenssl",
+      "cve_id": "CVE-2026-27459",
+      "cvss_score": 9.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 280
+    },
+    {
+      "source_node": "cryptography",
+      "cve_id": "CVE-2020-36242",
+      "cvss_score": 9.1,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [
+        "crypto"
+      ],
+      "data_sensitivity": "CRITICAL",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 281
+    },
+    {
+      "source_node": "requests",
+      "cve_id": "CVE-2021-29476",
+      "cvss_score": 9.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [
+        "network"
+      ],
+      "data_sensitivity": "MEDIUM",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 282
+    },
+    {
+      "source_node": "reportlab",
+      "cve_id": "CVE-2019-19450",
+      "cvss_score": 9.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 283
+    },
+    {
+      "source_node": "sqlalchemy",
+      "cve_id": "CVE-2019-7164",
+      "cvss_score": 9.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [
+        "database"
+      ],
+      "data_sensitivity": "HIGH",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 284
+    },
+    {
+      "source_node": "pillow",
+      "cve_id": "CVE-2020-5311",
+      "cvss_score": 9.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 289
+    },
+    {
+      "source_node": "axios",
+      "cve_id": "CVE-2021-3749",
+      "cvss_score": 7.5,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [
+        "network"
+      ],
+      "data_sensitivity": "MEDIUM",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 294
+    },
+    {
+      "source_node": "dompurify",
+      "cve_id": "CVE-2019-16728",
+      "cvss_score": 6.1,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 158
+    },
+    {
+      "source_node": "json5",
+      "cve_id": "CVE-2022-46175",
+      "cvss_score": 7.1,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 197
+    },
+    {
+      "source_node": "lodash",
+      "cve_id": "CVE-2019-10744",
+      "cvss_score": 9.1,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 200
+    },
+    {
+      "source_node": "scheduler",
+      "cve_id": "CVE-2020-14735",
+      "cvss_score": 8.8,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 248
+    },
+    {
+      "source_node": "thenify",
+      "cve_id": "CVE-2020-7677",
+      "cvss_score": 8.6,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 257
+    },
+    {
+      "source_node": "vite",
+      "cve_id": "CVE-2023-34092",
+      "cvss_score": 7.5,
+      "reachable_nodes": [],
+      "reachable_count": 0,
+      "sensitive_sinks_reachable": [],
+      "sink_types": [],
+      "data_sensitivity": "LOW",
+      "blast_radius_score": 0.0,
+      "attack_paths": [],
+      "topological_rank": 304
+    }
+  ],
+  "minimum_patch_set": {
+    "packages_to_update": [
+      "fastapi",
+      "uvicorn",
+      "dnspython",
+      "pyopenssl",
+      "cryptography"
+    ],
+    "packages_to_update_count": 5,
+    "total_vulnerable_count": 16,
+    "attack_paths_eliminated": 0,
+    "savings_percent": 68.75,
+    "update_order": [
+      "dnspython",
+      "uvicorn",
+      "pyopenssl",
+      "cryptography",
+      "fastapi"
+    ],
+    "estimated_effort": "MEDIUM",
+    "reasoning": "Steiner Tree 2-approximation selected 5 package(s) out of 16 vulnerable to eliminate 0 attack path(s). Savings: 68.8% fewer updates needed."
+  },
+  "patch_recommendations": [
+    {
+      "package_name": "fastapi",
+      "current_version": "0.110.0",
+      "cve_ids": [
+        "CVE-2021-32677"
+      ],
+      "cvss_score": 8.2,
+      "recommended_version": "0.110.0",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update fastapi to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "uvicorn",
+      "current_version": "0.29.0",
+      "cve_ids": [
+        "CVE-2020-7694"
+      ],
+      "cvss_score": 3.7,
+      "recommended_version": "0.29.0",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update uvicorn to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "dnspython",
+      "current_version": "2.6.1",
+      "cve_ids": [
+        "CVE-2023-29483"
+      ],
+      "cvss_score": 7.0,
+      "recommended_version": "2.6.1",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update dnspython to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "pyopenssl",
+      "current_version": "24.1.0",
+      "cve_ids": [
+        "CVE-2013-4314",
+        "CVE-2018-1000807",
+        "CVE-2018-1000808",
+        "CVE-2026-27459"
+      ],
+      "cvss_score": 9.8,
+      "recommended_version": "24.1.0",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update pyopenssl to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "cryptography",
+      "current_version": "42.0.5",
+      "cve_ids": [
+        "CVE-2016-9243",
+        "CVE-2020-25659",
+        "CVE-2020-36242",
+        "CVE-2023-50782"
+      ],
+      "cvss_score": 9.1,
+      "recommended_version": "42.0.5",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update cryptography to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches crypto.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "requests",
+      "current_version": "2.31.0",
+      "cve_ids": [
+        "CVE-2014-1829",
+        "CVE-2014-1830",
+        "CVE-2015-2296",
+        "CVE-2018-18074",
+        "CVE-2021-29476",
+        "CVE-2023-32681",
+        "CVE-2026-25645"
+      ],
+      "cvss_score": 9.8,
+      "recommended_version": "2.31.0",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update requests to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches network.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "reportlab",
+      "current_version": "4.1.0",
+      "cve_ids": [
+        "CVE-2019-19450",
+        "CVE-2020-28463"
+      ],
+      "cvss_score": 9.8,
+      "recommended_version": "4.1.0",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update reportlab to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "sqlalchemy",
+      "current_version": "2.0.48",
+      "cve_ids": [
+        "CVE-2012-0805",
+        "CVE-2019-7164",
+        "CVE-2019-7548"
+      ],
+      "cvss_score": 9.8,
+      "recommended_version": "2.0.48",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update sqlalchemy to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches database.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "pillow",
+      "current_version": "12.1.1",
+      "cve_ids": [
+        "CVE-2014-3007",
+        "CVE-2014-3589",
+        "CVE-2014-3598",
+        "CVE-2014-9601",
+        "CVE-2016-0740",
+        "CVE-2016-0775",
+        "CVE-2016-2533",
+        "CVE-2016-3076",
+        "CVE-2016-9189",
+        "CVE-2016-9190",
+        "CVE-2019-16865",
+        "CVE-2019-19911",
+        "CVE-2020-10177",
+        "CVE-2020-10378",
+        "CVE-2020-10379",
+        "CVE-2020-10994",
+        "CVE-2020-11538",
+        "CVE-2020-35653",
+        "CVE-2020-35654",
+        "CVE-2020-35655",
+        "CVE-2020-5310",
+        "CVE-2020-5311",
+        "CVE-2020-5312",
+        "CVE-2020-5313",
+        "CVE-2021-23437",
+        "CVE-2021-25287",
+        "CVE-2021-25288",
+        "CVE-2021-25290",
+        "CVE-2021-27921",
+        "CVE-2021-27922",
+        "CVE-2021-27923",
+        "CVE-2021-28675",
+        "CVE-2021-28676",
+        "CVE-2021-28677",
+        "CVE-2021-28678",
+        "CVE-2021-34552",
+        "CVE-2022-22815",
+        "CVE-2022-22816",
+        "CVE-2022-22817",
+        "CVE-2022-24303",
+        "CVE-2022-30595",
+        "CVE-2023-44271",
+        "CVE-2023-50447",
+        "CVE-2024-28219"
+      ],
+      "cvss_score": 9.8,
+      "recommended_version": "12.1.1",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update pillow to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches application sinks.",
+      "blast_radius_score": 0.0
+    },
+    {
+      "package_name": "axios",
+      "current_version": "1.13.6",
+      "cve_ids": [
+        "CVE-2020-28168",
+        "CVE-2021-3749",
+        "CVE-2023-45857"
+      ],
+      "cvss_score": 7.5,
+      "recommended_version": "1.13.6",
+      "threat_explanation": "Agent unavailable",
+      "breaking_changes": "Unknown",
+      "upgrade_command": "Update axios to a patched version",
+      "confidence": "LOW",
+      "attack_path_summary": "Highest risk path reaches network.",
+      "blast_radius_score": 0.0
+    }
+  ],
+  "scan_duration_seconds": 15.42,
+  "timestamp": "2026-04-23T12:10:58.478241+00:00",
+  "risk_summary": "CRITICAL"
+}

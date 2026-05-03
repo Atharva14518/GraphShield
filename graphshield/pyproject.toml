@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graphshield"
+version = "1.0.0"
+description = "Agentic Vulnerability Intelligence Engine for Software Supply Chain Security"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+keywords = ["security", "vulnerability", "supply-chain", "sbom", "cve", "sca"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+]
+
+dependencies = [
+    "networkx>=3.0",
+    "mmh3>=4.0",
+    "typer[all]>=0.9",
+    "rich>=13.0",
+    "groq>=0.5.0",
+    "requests>=2.28",
+    "python-dotenv>=1.0",
+    "packaging>=23.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+graphshield = "graphshield.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/graphshield/graphshield"
+Repository = "https://github.com/graphshield/graphshield"
+Issues = "https://github.com/graphshield/graphshield/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["graphshield*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
+
+[tool.coverage.run]
+source = ["graphshield"]
+omit = ["tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
